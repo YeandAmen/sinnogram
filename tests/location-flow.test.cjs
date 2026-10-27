@@ -107,3 +107,10 @@ test('street lookup times out without losing a usable device fix',async()=>{
  expire();await pending;assert.equal(cleared,true);assert.equal(a.$('optimize').disabled,false);
  assert.match(a.$('location-status').textContent,/lookup unavailable; your captured coordinates are set/);
 });
+test('a failed decorative canvas cannot stop location capture or erase its feedback',async()=>{
+ const a=await app(reverseLabel);
+ vm.runInContext("sinnogramScene.set=()=>{throw Error('Canvas unavailable')}",a.context);
+ const capture=a.capture();assert.match(a.$('location-status').textContent,/Capturing a fresh/);
+ await capture.success(fix(12));assert.equal(a.start().lat,9.0811598);
+ assert.match(a.$('location-status').textContent,/captured at/);
+});

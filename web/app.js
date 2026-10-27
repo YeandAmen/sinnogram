@@ -86,7 +86,8 @@ function renderScene(){
   const points=hasTrip?actual.filter((p,i,a)=>a.findIndex(v=>same(v,p))===i).map(p=>({...p,label:title(p)})):config.samples.filter((p,i)=>[0,4,7,8,9].includes(i)).map(p=>({...p,label:title(p)}));
   if(activePlace&&!activePlace.unlocated&&!points.some(p=>same(p,activePlace)))points.push({...activePlace,label:title(activePlace)});
   const selected=activePlace&&!activePlace.unlocated?points.findIndex(p=>same(p,activePlace)):-1;
-  sinnogramScene.set(points,hasTrip?actual:[],selected);
+  // A canvas failure must never interrupt trip editing or device capture.
+  try{if(typeof sinnogramScene!=='undefined')sinnogramScene.set(points,hasTrip?actual:[],selected)}catch(e){console.warn('The decorative scene could not redraw.')}
   $('scene-hint').innerHTML='Drag to explore &nbsp;·&nbsp; Select a place to look closer<br><span>Geographic constellation · not a street map</span>';
 }
 function render(){
@@ -283,7 +284,7 @@ $('download').onclick=()=>{if(!result)return;const text=['SINNOGRAM / YOUR DAY I
 $('begin').onclick=$('nav-plan').onclick=()=>{closeMap(false);openPanel('plan')};$('nav-explore').onclick=explore;$('nav-map').onclick=()=>openMap();$('close-plan').onclick=$('close-detail').onclick=explore;
 $('overview').onclick=()=>{if(result)showStop(result.legs[0].to,0);else openPanel('plan')};
 $('zoom-in').onclick=()=>sinnogramScene.zoomBy(.15);$('zoom-out').onclick=()=>sinnogramScene.zoomBy(-.15);$('reset-view').onclick=()=>sinnogramScene.reset();
-sinnogramScene.onSelect=p=>{const index=stops.findIndex(v=>same(v,p));if(index>=0||same(startPlace,p))showStop(p,index);else showCandidate({...p,match:'place',description:'An example district/location in Abuja. Confirm the exact entrance pin before adding it.'})};
+if(typeof sinnogramScene!=='undefined')sinnogramScene.onSelect=p=>{const index=stops.findIndex(v=>same(v,p));if(index>=0||same(startPlace,p))showStop(p,index);else showCandidate({...p,match:'place',description:'An example district/location in Abuja. Confirm the exact entrance pin before adding it.'})};
 $('about').onclick=()=>$('about-dialog').showModal();$('close-about').onclick=()=>$('about-dialog').close();
 (async()=>{
   try{
