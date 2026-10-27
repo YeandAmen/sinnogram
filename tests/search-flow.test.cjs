@@ -28,3 +28,10 @@ test('superseded requests cannot replace the current results',async()=>{
  const old=a.run('Maitama');await a.run('Garki');first(result('Maitama'));await old;
  assert.match(a.$('search-status').textContent,/“Garki”/);assert.equal(a.$('search-submit').disabled,false);
 });
+
+test('missing businesses get a Google Maps fallback without claiming an imported pin',async()=>{
+ const a=await app(null,async()=>({ok:true,json:async()=>({query:'Unknown cafe Wuse 2',results:[],message:'No mapped match.'})}));
+ await a.run('Unknown cafe Wuse 2');const link=a.$('matches').children[0];
+ assert.match(link.href,/^https:\/\/www\.google\.com\/maps\/search/);assert.match(decodeURIComponent(link.href),/Unknown cafe Wuse 2/);
+ assert.match(a.$('matches').children[1].children.join(''),/does not import or verify a pin/);
+});

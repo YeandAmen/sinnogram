@@ -218,11 +218,11 @@ func (o *osm) SearchDetailed(ctx context.Context, q string) (SearchResponse, err
 		return result, nil
 	}
 	if fallback := streetQuery(q); fallback != "" && !strings.EqualFold(fallback, q) {
-		rows := catalog.Search(fallback)
+		rows := catalog.Streets(fallback)
 		if len(rows) == 0 {
 			// A street may have no suburb tags in the snapshot. Offer only named
 			// roads and explicitly leave both district and building unconfirmed.
-			for _, r := range catalog.Search(strings.Split(fallback, ",")[0]) {
+			for _, r := range catalog.Streets(strings.Split(fallback, ",")[0]) {
 				if r.Match == "street" {
 					rows = append(rows, r)
 				}

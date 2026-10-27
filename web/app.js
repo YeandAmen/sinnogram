@@ -8,6 +8,7 @@ const number = value => String(value).padStart(2, '0');
 const clean = p => ({name:p.name,lat:Number(p.lat),lng:Number(p.lng)});
 const same = (a,b) => !!a && !!b && a.lat === b.lat && a.lng === b.lng;
 const sameVisit = (a,b) => same(a,b) && a.name.trim().toLowerCase()===b.name.trim().toLowerCase();
+const needsPin = p => p?.match==='street'||p?.match==='uncertain';
 const title = p => p.name.split(' · ')[0].split(',')[0];
 const iconPaths = {
   '↗':'<path d="M5 19 19 5M5 5h14v14"/>',
@@ -93,13 +94,13 @@ function detail(candidate,kind,index){
   activePlace=candidate;closeMap(false);openPanel('detail');
   $('detail-sketch').innerHTML=sketch(Math.round(candidate.lat*100));
   $('detail-kicker').textContent=kind==='candidate'?'ADDRESS SEARCH / PREVIEW':'A PLACE ON YOUR WAY';
-  $('detail-type').textContent=kind==='candidate'?({address:'ADDRESS LEAD · BUILDING PIN NOT VERIFIED',landmark:'VERIFIED LANDMARK ADDRESS',street:'AREA / STREET · EXACT BUILDING NOT FOUND',place:'MAPPED PLACE',manual:'YOUR CONFIRMED PIN'}[candidate.match]||'LOCATION PREVIEW'):index<0?'STARTING POINT':`STOP ${number(index+1)}`;
+  $('detail-type').textContent=kind==='candidate'?({address:'ADDRESS LEAD · BUILDING PIN NOT VERIFIED',landmark:'VERIFIED LANDMARK ADDRESS',uncertain:'BUSINESS LISTING · VERIFY ITS LOCATION',street:'AREA / STREET · EXACT BUILDING NOT FOUND',place:'MAPPED PLACE',manual:'YOUR CONFIRMED PIN'}[candidate.match]||'LOCATION PREVIEW'):index<0?'STARTING POINT':`STOP ${number(index+1)}`;
   $('detail-title').textContent=title(candidate);$('detail-address').textContent=candidate.name;
   $('detail-description').textContent=candidate.description||(result?result.notice:'Add your places, then organize the trip to compare driving distances.');
   setLabel($('detail-source'),'Address source ↗');$('detail-source').hidden=!candidate.source;if(candidate.source)$('detail-source').href=candidate.source;
   const actions=$('detail-actions');actions.replaceChildren();
   if(kind==='candidate'){
-    const confirm=el('button',candidate.unlocated?'Choose this address’s map pin ↗':candidate.match==='street'?'Place the exact building pin ↗':'Check & confirm the map pin ↗','dark-button');confirm.onclick=()=>openMap(candidate,'stop','detail');
+    const confirm=el('button',candidate.unlocated?'Choose this address’s map pin ↗':needsPin(candidate)?'Place the exact building pin ↗':'Check & confirm the map pin ↗','dark-button');confirm.onclick=()=>openMap(candidate,'stop','detail');
     const start=el('button','Use as starting point','secondary');start.onclick=()=>openMap(candidate,'start','detail');actions.append(confirm,start);
     if(candidate.unlocated){
       const lookup=el('button','Look for this address on the live map ↗','secondary');
@@ -107,6 +108,7 @@ function detail(candidate,kind,index){
       actions.append(lookup);
       for(const [label,url]of [['Find address in Google Maps ↗','https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(candidate.name)],['Find address in Apple Maps ↗','https://maps.apple.com/?q='+encodeURIComponent(candidate.name)]]){const a=el('a',label,'inline-link');a.href=url;a.target='_blank';a.rel='noopener noreferrer';actions.append(a)}
     }
+    if(candidate.match==='uncertain'){const a=el('a','Check this business in Google Maps ↗','inline-link');a.href='https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(candidate.name);a.target='_blank';a.rel='noopener noreferrer';actions.append(a)}
     if(candidate.pin_source){const source=el('a','View pin source ↗','inline-link');source.href=candidate.pin_source;source.target='_blank';source.rel='noopener noreferrer';actions.append(source)}
     const back=el('button','← Back to address search','inline-link');back.onclick=()=>openPanel('plan');actions.append(back);
   }else{
@@ -121,8 +123,12 @@ function showStop(place,index){detail(place,'stop',index)}
 function showCandidate(candidate){detail(candidate,'candidate',-1)}
 function showSearch(data){
   const root=$('matches');root.replaceChildren();$('search-status').textContent=`${data.results.length} ${data.results.length===1?'result':'results'} for “${data.query}”. ${data.message||'Select a place below to check its pin.'}`;
-  data.results.forEach(p=>{const b=el('button',undefined,'search-result');const copy=el('div');copy.append(el('small',p.unlocated?'Address lead · no verified pin':p.match==='landmark'?'Landmark address verified':p.match==='street'?'Area / street · pin required':'Mapped place'),el('strong',p.name));b.append(copy,el('span','↗'));b.onclick=()=>showCandidate(p);root.append(b)});
-  if(!data.results.length){const b=el('button','Place this address on the map ↗','inline-link');b.onclick=()=>openMap({name:data.query,lat:startPlace.lat,lng:startPlace.lng,match:'street'},'stop','plan');root.append(b)}
+  data.results.forEach(p=>{const b=el('button',undefined,'search-result');const copy=el('div');copy.append(el('small',p.unlocated?'Address lead · no verified pin':p.match==='uncertain'?'Business listing · verify location':p.match==='landmark'?'Landmark address verified':p.match==='street'?'Area / street · pin required':'Mapped place'),el('strong',p.name));b.append(copy,el('span','↗'));b.onclick=()=>showCandidate(p);root.append(b)});
+  if(!data.results.length){
+    const google=el('a','Search this business in Google Maps ↗','secondary');google.href='https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(data.query+', Abuja, Nigeria');google.target='_blank';google.rel='noopener noreferrer';root.append(google);
+    const help=el('p','Google Maps has its own business listings. This opens Google; it does not import or verify a pin in Sinnogram.','micro');root.append(help);
+    const b=el('button','Place this address on the map ↗','inline-link');b.onclick=()=>openMap({name:data.query,lat:startPlace.lat,lng:startPlace.lng,match:'street'},'stop','plan');root.append(b)
+  }
 }
 function revealPlaceSearch(){
   $('search-form').scrollIntoView({block:'start',behavior:'auto'});
@@ -170,8 +176,8 @@ function initMap(){
 function setMapPin(latlng,moved=false){
   if(!editMarker){editMarker=L.marker(latlng,{draggable:true,icon:L.divIcon({className:'',html:'<div class="map-pin"></div>',iconSize:[24,30],iconAnchor:[12,27]})}).addTo(map);editMarker.on('dragend',()=>setMapPin(editMarker.getLatLng(),true))}else editMarker.setLatLng(latlng);
   if(moved)pinMoved=true;
-  $('pin-position').textContent=`${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}${pendingPin?.place.match==='street'&&!pinMoved?' · Move to the exact building':''}`;
-  $('confirm-pin').disabled=!!pendingPin&&pendingPin.place.match==='street'&&!pinMoved;
+  $('pin-position').textContent=`${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}${needsPin(pendingPin?.place)&&!pinMoved?' · Move to the exact building':''}`;
+  $('confirm-pin').disabled=!!pendingPin&&needsPin(pendingPin.place)&&!pinMoved;
   if(pendingPin)pendingPin.coords={lat:latlng.lat,lng:latlng.lng};
 }
 function openMap(place=null,action='inspect',origin='explore'){
@@ -182,7 +188,7 @@ function openMap(place=null,action='inspect',origin='explore'){
   $('map-confirm').hidden=!place;setLabel($('confirm-pin'),action==='start'?'Set starting point ↗':action==='inspect'?'Back to place ↗':'Add confirmed stop ↗');
   initMap();map.invalidateSize();mapPins.clearLayers();if(editMarker){map.removeLayer(editMarker);editMarker=null;}
   journeyPoints().forEach(p=>L.circleMarker([p.lat,p.lng],{radius:5,weight:1,color:'#35342c',fillColor:'#f1eee5',fillOpacity:1}).bindTooltip(el('span',title(p))).addTo(mapPins));
-  if(place){map.setView([place.lat,place.lng],unlocated?12:place.match==='street'?16:17);setMapPin(L.latLng(place.lat,place.lng));}
+  if(place){map.setView([place.lat,place.lng],unlocated?12:needsPin(place)?16:17);setMapPin(L.latLng(place.lat,place.lng));}
   else{const points=journeyPoints();if(points.length>1)map.fitBounds(points.map(p=>[p.lat,p.lng]),{padding:[70,70],maxZoom:15});else map.setView([startPlace.lat,startPlace.lng],14)}
 }
 function closeMap(restore=true){
@@ -191,7 +197,7 @@ function closeMap(restore=true){
 }
 $('confirm-pin').onclick=()=>{
   if(!pendingPin)return;const {place,action,coords}=pendingPin;if(action==='inspect'){closeMap();return}
-  if(place.match==='street'&&!pinMoved)return;
+  if(needsPin(place)&&!pinMoved)return;
   const confirmed={name:place.name,lat:coords.lat,lng:coords.lng};
   if(action==='start')setStart(confirmed);else if(!addStop(confirmed))return;
   pendingPin=null;closeMap(false);openPanel('plan');$('matches').replaceChildren();$('search-status').classList.remove('search-failure');$('search-status').textContent='Pin confirmed. Location added to your day.';$('search').value='';
@@ -259,8 +265,8 @@ $('about').onclick=()=>$('about-dialog').showModal();$('close-about').onclick=()
     }
     render();
     api('/api/location-coverage').then(c=>{
-      const node=$('coverage-status');node.replaceChildren(document.createTextNode(`${c.mapped_records.toLocaleString()} mapped places/streets · ${c.seed_leads} address leads. Greater Abuja snapshot; coverage varies. © OpenStreetMap contributors · `));
-      const link=el('a','Data & attribution');link.href='/api/location-data';node.append(link);
+      const node=$('coverage-status');node.replaceChildren(document.createTextNode(`${c.mapped_records.toLocaleString()} map records · ${c.seed_leads+(c.reviewed_address_leads||0)} address leads. Greater Abuja snapshot; coverage varies. © OpenStreetMap contributors; Overture Maps & source contributors · `));
+      const link=el('a','Data & attribution');link.href='/api/location-data';node.append(link);if(c.overture_records){const extra=el('a',' · Overture data');extra.href=c.overture_download;node.append(extra)}
     }).catch(()=>{});
   }catch(e){$('footer-status').textContent='Connection unavailable';openPanel('plan');error(e.message)}
 })();

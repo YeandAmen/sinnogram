@@ -79,7 +79,7 @@ node --test tests/*.test.cjs
 
 Review source differences before publishing a refresh. The importer retains stable OSM IDs and source URLs, excludes explicitly private/disused features, and deduplicates adjacent road segments and near-identical same-name points. It does not guess missing coordinates or merge headquarters with branches. Retain the raw snapshot separately if needed for audit; do not commit personal fixes or itineraries. A reviewed data update and deployment changes the index; submitting a search does not train an AI model or establish a new verified address.
 
-The current snapshot can be downloaded at `/api/location-data` with ODbL attribution; `/api/location-coverage` exposes record counts, timestamp, bounding box and license. A production-scale catalog can replace the embedded snapshot with a spatial database and licensed Overture/AGIS/NIPOST imports. Those sources have not been imported or represented as available here.
+The current snapshot can be downloaded at `/api/location-data` with ODbL attribution; `/api/location-coverage` exposes record counts, timestamp, bounding box and license. A production-scale catalog can replace the embedded snapshot with a spatial database and licensed Overture/AGIS/NIPOST imports. Overture places are now imported as described below; AGIS and NIPOST have not been imported or represented as available.
 
 ## Device location
 
@@ -93,3 +93,19 @@ A same-origin `POST /api/reverse` translates the coordinates to nearby street/ar
 `Find places` and Enter submit explicit searches (Shift+Enter retains multiline address editing). The planner scrolls the search form and its immediately adjacent progress/results into view, including after long GPS status messages. Errors and retry actions appear beside the query. A 30-second client timeout restores the button, and superseded requests cannot overwrite newer results. Region/administrative matches from live geocoding require an exact user-placed pin.
 
 The exact distance strategy remains the default. Its directed-cost dynamic-programming solver is compared against exhaustive permutations for small trips, with a separate known-optimum test at the ten-stop limit, including zero-cost co-located offices and a return trip. This establishes minimum total matrix distance for the visit order; it does not prove the shortest possible road geometry, traffic-aware travel time, taxi cost, or road access. The nearest-next strategy is explicitly labelled as a greedy order and can be worse than the exact strategy.
+
+
+## Business coverage and Overture imports
+
+The extra `data/overture_places.json` is a separate, permissively licensed places snapshot. It preserves source-level confidence, provenance and licenses; it does not copy Google Maps results into the app's own catalog. The API reports `osm_records`, `overture_records` and `reviewed_address_leads` separately. The original `/api/location-data` remains the ODbL snapshot; `?source=overture` downloads the separate Overture data with its license texts and notices.
+
+```sh
+python3 -m venv /tmp/sinnogram-overture-venv
+/tmp/sinnogram-overture-venv/bin/pip install overturemaps==1.0.2
+/tmp/sinnogram-overture-venv/bin/overturemaps download --bbox=7.15,8.80,7.80,9.40 -f geojsonseq --type=place -o /tmp/abuja-places.geojsonseq
+python3 scripts/import_overture_places.py /tmp/abuja-places.geojsonseq data/overture_places.json
+```
+
+Review changes before publishing; a source confidence score is not proof of a precise/current entrance. Low-confidence listings require moving the map pin. Business-name singular/plural variants and Wuse 2/Wuse II/Wuse2 normalization help lookup, while numeric plot and branch constraints remain strict. Street fallbacks use actual mapped streets rather than unrelated business pins whose postal text mentions the street.
+
+Google Maps' consumer website and the public OSM index have different coverage. For misses, an explicit external Google Maps search link is provided; it opens Google's site and does not import a Google pin. Google Places API (New) would provide Google's business search inside the app, but requires an enabled Google Cloud API key and billing, plus appropriate Google map display/attribution and retention handling. The current deployment has no Google API key and no new Google service has been activated or billed. See [Text Search](https://developers.google.com/maps/documentation/places/web-service/text-search) and [Places policies](https://developers.google.com/maps/documentation/places/web-service/policies).

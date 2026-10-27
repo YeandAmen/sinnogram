@@ -16,4 +16,17 @@ Each normalized record retains its OSM element ID and source URL. Way/relation c
 
 `offices.go` records the previously checked Abuja-office addresses and separates the address source from pin provenance. The office directory remains distinct from the OSM snapshot and seed CSV.
 
-No Google Maps scrape, AGIS record export, NIPOST bulk dataset or Overture extract is included in this import. Future source imports must retain their own license, precision and provenance metadata.
+No Google Maps scrape, AGIS record export or NIPOST bulk dataset is included. Future source imports must retain their own license, precision and provenance metadata.
+
+
+## Overture places expansion
+
+`overture_places.json` adds 16,423 normalized records from Overture's `2026-10-21.0` places release, downloaded for the same greater-Abuja bounding box with the official `overturemaps` 1.0.2 client. These are source records, not a count of unique verified businesses. Names/near-identical points are deduplicated within the import; search also suppresses nearby same-name results across sources. Distinct branches and co-located organisations are kept separate.
+
+Sources include Meta, Microsoft, Overture, Uberall, AllThePlaces, Foursquare, PinMeTo and OpenTravel. Preserve per-record source IDs, timestamps, confidence and licenses. CDLA-Permissive-2.0, Apache-2.0 and CC0-1.0 apply as indicated in each record. Complete CDLA/Apache license texts and the Foursquare NOTICE are in `data/licenses/` and embedded in the downloadable JSON at `/api/location-data?source=overture`. Foursquare copyright and NOTICE are preserved; the source was transformed to Overture's schema and subsequently filtered/normalized for Sinnogram. See [Overture's source attribution](https://docs.overturemaps.org/attribution/).
+
+The snapshot records its release and raw-file SHA-256. Re-import with `scripts/import_overture_places.py` after downloading a newer official GeoJSON sequence. The importer rejects unsupported licenses/source datasets, missing coordinates, points outside the bounding box, explicitly closed records and duplicate nearby same-name points. A confidence score is a source signal, not an independent entrance verification. Listings below 0.7 require a corrected map pin before routing; higher scores still require a user map check. Missing/update/closure data can be stale.
+
+## Reviewed business-address leads
+
+`reviewed_places.json` keeps business-published branch addresses separate from mapped points. The Edible Creations Wuse 2 address was checked against its [contact page](https://ediblecreationsng.com/contact-us/) and [company profile](https://www.linkedin.com/company/edible-creations-limited/) on 27 October 2026. Its Wuse 2 pin has not been independently verified. The available Overture Edible Creations point is for Idu and is never substituted for a query explicitly requesting Wuse 2.

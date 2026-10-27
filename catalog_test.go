@@ -39,10 +39,63 @@ func TestPublicCatalogAndSeedPrecision(t *testing.T) {
 		t.Fatal(r, err)
 	}
 	places, err := o.Search(context.Background(), "NITDA")
-	if err != nil || len(places) != 0 {
-		t.Fatal("compatibility API exposed missing coordinates", places, err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range places {
+		if p.Lat == 0 || p.Lng == 0 {
+			t.Fatal("compatibility API exposed missing coordinates", p)
+		}
 	}
 	if r, err = o.SearchDetailed(context.Background(), "Plot 99999, Tigris Crescent, Maitama, Abuja"); err != nil || len(r.Results) == 0 || r.Results[0].Match != "street" || !strings.Contains(r.Message, "plot number") {
 		t.Fatal(r, err)
+	}
+}
+
+func TestBusinessNameVariationKeepsRequestedBranch(t *testing.T) {
+	for _, q := range []string{"edibles creation wuse 2", "Edible Creations Wuse II", "edible creations wuse2"} {
+		rows := catalog.Search(q)
+		if len(rows) == 0 {
+			t.Fatal("business name variation not resolved", q)
+		}
+		if rows[0].ID != "reviewed/edible-creations-wuse-2" || !rows[0].Unlocated || rows[0].Match != "address" {
+			t.Fatal("unverified branch location misrepresented", q, rows[0])
+		}
+		for _, r := range rows {
+			if strings.Contains(strings.ToLower(r.Name), "idu") {
+				t.Fatal("silently substituted Idu for Wuse 2", r)
+			}
+		}
+	}
+	if len(catalog.Overture.Records) < 16000 {
+		t.Fatal("broader places index not loaded")
+	}
+	rows := catalog.Search("Edible Creations Idu")
+	if len(rows) == 0 {
+		t.Fatal("missing Idu branch")
+	}
+	for _, e := range catalog.entries {
+		if e.ID == "overture/bc2f0bf9-7df4-4aae-9ce3-dba9e9273601" && e.Match != "uncertain" {
+			t.Fatal("low-confidence listing treated as precise", e)
+		}
+	}
+}
+
+func TestCatalogRoutingLabelsStayWithinByteLimit(t *testing.T) {
+	for _, entry := range catalog.entries {
+		if len(entry.Name) > 300 {
+			t.Fatal("unroutable catalog label", entry.ID, len(entry.Name))
+		}
+	}
+	for _, name := range []string{strings.Repeat("a", 295) + "界界界界", strings.Repeat("界", 150)} {
+		label := placeLabel(name, "long address")
+		if len(label) > 300 {
+			t.Fatal("UTF-8 label exceeds trip limit", len(label))
+		}
+	}
+	for _, r := range catalog.Streets("Tigris Crescent") {
+		if !strings.HasPrefix(r.ID, "osm/") || r.Match != "street" {
+			t.Fatal("street fallback used a business pin", r)
+		}
 	}
 }

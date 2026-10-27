@@ -14,21 +14,25 @@ import (
 
 // Public, versioned source snapshots. Personal trips and GPS fixes never enter this catalog.
 //
-//go:embed data/osm_locations.json data/seed_public_locations.csv
+//go:embed data/osm_locations.json data/seed_public_locations.csv data/overture_places.json data/reviewed_places.json
 var catalogFiles embed.FS
 
 type catalogRecord struct {
-	ID        string   `json:"id"`
-	Name      string   `json:"name"`
-	Address   string   `json:"address"`
-	Aliases   []string `json:"aliases"`
-	Lat       float64  `json:"lat"`
-	Lng       float64  `json:"lng"`
-	Precision string   `json:"precision"`
-	Category  string   `json:"category"`
-	Source    string   `json:"source"`
+	ID         string   `json:"id"`
+	Name       string   `json:"name"`
+	Address    string   `json:"address"`
+	Aliases    []string `json:"aliases"`
+	Lat        float64  `json:"lat"`
+	Lng        float64  `json:"lng"`
+	Precision  string   `json:"precision"`
+	Category   string   `json:"category"`
+	Source     string   `json:"source"`
+	License    string   `json:"license"`
+	Confidence *float64 `json:"confidence"`
+	UpdatedAt  string   `json:"updated_at"`
 }
 type catalogSnapshot struct {
+	Release     string          `json:"release"`
 	License     string          `json:"license"`
 	Attribution string          `json:"attribution"`
 	SnapshotAt  string          `json:"snapshot_at"`
@@ -45,13 +49,17 @@ type locationCatalog struct {
 	entries  []indexedLocation
 	Snapshot catalogSnapshot
 	Seeds    int
+	Overture catalogSnapshot
+	Reviewed catalogSnapshot
 }
 
+var wuseDistrict = regexp.MustCompile(`(?i)\bwuse[\s-]*(ii|two|2)\b`)
 var acronym = regexp.MustCompile(`\(([A-Z][A-Z0-9&-]{1,12})\)`)
 var catalog = loadCatalog()
 
 func searchWords(s string) []string {
 	s = strings.ToLower(s)
+	s = wuseDistrict.ReplaceAllString(s, "wuse 2")
 	s = strings.Map(func(r rune) rune {
 		if unicode.IsLetter(r) || unicode.IsNumber(r) {
 			return r
@@ -90,7 +98,38 @@ func loadCatalog() locationCatalog {
 			match = "street"
 			description = "Mapped street only. Move the pin to the building or entrance you need."
 		}
-		c.add(Candidate{Place: Place{r.Name + " · " + r.Address, r.Lat, r.Lng}, Match: match, Description: description, Source: r.Source, ID: r.ID, Category: r.Category, UpdatedAt: c.Snapshot.SnapshotAt, License: "ODbL-1.0"}, append([]string{r.Name}, r.Aliases...), r.Address)
+		c.add(Candidate{Place: Place{placeLabel(r.Name, r.Address), r.Lat, r.Lng}, Match: match, Description: description, Source: r.Source, ID: r.ID, Category: r.Category, UpdatedAt: c.Snapshot.SnapshotAt, License: "ODbL-1.0"}, append([]string{r.Name}, r.Aliases...), r.Address)
+	}
+	for _, path := range []string{"data/overture_places.json", "data/reviewed_places.json"} {
+		var snapshot catalogSnapshot
+		b, e := catalogFiles.ReadFile(path)
+		if e != nil {
+			panic(e)
+		}
+		if e = json.Unmarshal(b, &snapshot); e != nil {
+			panic(e)
+		}
+		if strings.Contains(path, "overture") {
+			c.Overture = snapshot
+		} else {
+			c.Reviewed = snapshot
+		}
+		for _, r := range snapshot.Records {
+			description := "Business location from Overture Maps and source contributors. Listings may be outdated and pins approximate; check the branch and entrance before adding."
+			match, unlocated := "place", false
+			if r.Precision == "address" {
+				match = "address"
+				unlocated = true
+				description = "Business-published branch address, checked 27 October 2026. Its building pin is not verified. Confirm this branch's entrance before routing."
+			} else if r.Name == "" || r.Lat < 8.8 || r.Lat > 9.4 || r.Lng < 7.15 || r.Lng > 7.8 {
+				panic("invalid supplemental point: " + r.ID)
+			}
+			if r.Confidence != nil && *r.Confidence < 0.7 {
+				match = "uncertain"
+				description = "Low-confidence business listing from Overture Maps. Its location may be outdated or approximate. Check the branch address and move the pin to the correct entrance."
+			}
+			c.add(Candidate{Place: Place{placeLabel(r.Name, r.Address), r.Lat, r.Lng}, Match: match, Unlocated: unlocated, Description: description, Source: r.Source, ID: r.ID, Category: r.Category, License: r.License, UpdatedAt: r.UpdatedAt}, append([]string{r.Name}, r.Aliases...), r.Address)
+		}
 	}
 	f, err := catalogFiles.Open("data/seed_public_locations.csv")
 	if err != nil {
@@ -123,7 +162,7 @@ func loadCatalog() locationCatalog {
 		for _, a := range acronym.FindAllStringSubmatch(name, -1) {
 			names = append(names, a[1])
 		}
-		c.add(Candidate{Place: Place{Name: name + " · " + address}, Match: "address", Unlocated: true, Description: "Published-address lead from the supplied seed list; not independently verified. Precision: " + get("address_precision") + ". Find and confirm its mapped entrance before routing. " + get("notes"), Source: source, ID: fmt.Sprintf("seed/%02d", i+1), Category: get("category")}, names, address)
+		c.add(Candidate{Place: Place{Name: placeLabel(name, address)}, Match: "address", Unlocated: true, Description: "Published-address lead from the supplied seed list; not independently verified. Precision: " + get("address_precision") + ". Find and confirm its mapped entrance before routing. " + get("notes"), Source: source, ID: fmt.Sprintf("seed/%02d", i+1), Category: get("category")}, names, address)
 		c.Seeds++
 	}
 	return c
@@ -166,6 +205,15 @@ func oneEdit(a, b string) bool {
 	}
 	return edits+len(x)-i+len(y)-j <= 1
 }
+func equivalentWord(a, b string) bool {
+	if a == b {
+		return true
+	}
+	if len(a) < 4 || len(b) < 4 || unicode.IsDigit(rune(a[0])) || unicode.IsDigit(rune(b[0])) {
+		return false
+	}
+	return a+"s" == b || b+"s" == a
+}
 func (c locationCatalog) Search(q string) []Candidate {
 	words := searchWords(q)
 	if len(words) == 0 {
@@ -179,10 +227,12 @@ func (c locationCatalog) Search(q string) []Candidate {
 	hits := []hit{}
 	for _, entry := range c.entries {
 		matched, fuzzy, nameMatches := 0, 0, 0
+		variation := false
 		for _, word := range words {
 			exact := false
 			for _, w := range entry.words {
-				if word == w {
+				if equivalentWord(word, w) {
+					variation = variation || word != w
 					exact = true
 					break
 				}
@@ -190,7 +240,14 @@ func (c locationCatalog) Search(q string) []Candidate {
 			if exact {
 				matched++
 				for _, n := range entry.names {
-					if strings.Contains(" "+n+" ", " "+word+" ") {
+					if func() bool {
+						for _, nw := range strings.Fields(n) {
+							if equivalentWord(word, nw) {
+								return true
+							}
+						}
+						return false
+					}() {
 						nameMatches++
 						break
 					}
@@ -209,6 +266,12 @@ func (c locationCatalog) Search(q string) []Candidate {
 			continue
 		}
 		score := matched*5 + nameMatches*4 - fuzzy*8
+		if entry.Unlocated {
+			score += 20
+		}
+		if strings.HasPrefix(entry.ID, "reviewed/") {
+			score += 30
+		}
 		for _, n := range entry.names {
 			if phrase == n {
 				score += 100
@@ -219,6 +282,9 @@ func (c locationCatalog) Search(q string) []Candidate {
 			score -= 8
 		}
 		p := entry.Candidate
+		if variation {
+			p.Description = "Name variation matched. " + p.Description
+		}
 		if fuzzy > 0 {
 			p.Description = "Possible spelling match. " + p.Description
 		}
@@ -227,10 +293,49 @@ func (c locationCatalog) Search(q string) []Candidate {
 	sort.SliceStable(hits, func(i, j int) bool { return hits[i].score > hits[j].score })
 	out := []Candidate{}
 	for _, h := range hits {
+		duplicate := false
+		for _, p := range out {
+			if !p.Unlocated && !h.p.Unlocated && strings.Join(searchWords(strings.Split(p.Name, " · ")[0]), " ") == strings.Join(searchWords(strings.Split(h.p.Name, " · ")[0]), " ") && haversine(p.Place, h.p.Place) < 75 {
+				duplicate = true
+				break
+			}
+		}
+		if duplicate {
+			continue
+		}
 		out = append(out, h.p)
 		if len(out) == 6 {
 			break
 		}
 	}
 	return out
+}
+
+// Street fallback uses actual mapped streets, never an unrelated business whose
+// postal text happens to mention the same road.
+func (c locationCatalog) Streets(q string) []Candidate {
+	streets := locationCatalog{}
+	for _, e := range c.entries {
+		if strings.HasPrefix(e.ID, "osm/") && e.Match == "street" {
+			streets.entries = append(streets.entries, e)
+		}
+	}
+	return streets.Search(q)
+}
+
+// API trip names have a 300-byte limit; leave the complete searchable address in
+// the source catalog while keeping routing labels valid UTF-8 and within bounds.
+func placeLabel(name, address string) string {
+	label := name + " · " + address
+	if len(label) <= 300 {
+		return label
+	}
+	last := 0
+	for i := range label {
+		if i > 297 {
+			return label[:last] + "…"
+		}
+		last = i
+	}
+	return label[:last] + "…"
 }
