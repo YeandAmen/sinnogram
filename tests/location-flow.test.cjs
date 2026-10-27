@@ -1,31 +1,7 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const vm=require('node:vm');
-const fs=require('node:fs');
-const tick=()=>new Promise(resolve=>setImmediate(resolve));
-async function app(reverse){
- class Element {
-  constructor(){this.options=[];this.children=[];this.value='';this.classList={toggle(){},add(){},remove(){}}}
-  append(...nodes){this.children.push(...nodes);this.options.push(...nodes)}
-  replaceChildren(...nodes){this.children=[];this.append(...nodes)}
-  setAttribute(){} focus(){} querySelector(){return new Element()}
- }
- const elements=new Map();const $=id=>{if(!elements.has(id))elements.set(id,new Element());return elements.get(id)};
- let success, failure, options;
- const context=vm.createContext({console,URL,Blob,setTimeout,clearTimeout,Date,window:{isSecureContext:true},localStorage:{getItem:()=>null,setItem(){}},
-  document:{getElementById:$,createElement:()=>new Element(),createElementNS:()=>new Element(),createTextNode:s=>s,querySelectorAll:()=>[]},
-  navigator:{geolocation:{getCurrentPosition(a,b,c){success=a;failure=b;options=c}}},
-  sinnogramScene:{set(){},zoomBy(){},reset(){}},
-  fetch:async(path,init)=>{
-   if(path==='/api/reverse')return reverse(path,init);
-   const data=path==='/api/config'?{provider:'osm',samples:[{name:'Wuse test start',lat:9.07,lng:7.46}]}:{mapped_records:2750,seed_leads:39};
-   return {ok:true,json:async()=>data};
-  }
- });
- vm.runInContext(fs.readFileSync(require.resolve('../web/location.js'),'utf8'),context);
- vm.runInContext(fs.readFileSync(require.resolve('../web/app.js'),'utf8'),context);await tick();
- return {$,context,start:()=>JSON.parse(vm.runInContext('JSON.stringify(startPlace)',context)),capture:()=>{$('locate').onclick();return {success,failure,options}}};
-}
+const {app,tick}=require('./app-harness.cjs');
 const fix=accuracy=>({timestamp:Date.now(),coords:{latitude:9.0811598,longitude:7.4934709,accuracy}});
 test('GPS to reverse lookup retains original coordinates and shows street on both device classes',async()=>{
  let sent;

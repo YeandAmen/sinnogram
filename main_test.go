@@ -202,3 +202,36 @@ func TestEnteredOrderAndSharedBuilding(t *testing.T) {
 		t.Fatal("duplicate named visit accepted")
 	}
 }
+
+func TestExactOrderAtTenStopsWithDirectedReturnAndZeroCost(t *testing.T) {
+	n := 11
+	m := make([][]cell, n)
+	for i := range m {
+		m[i] = make([]cell, n)
+		for j := range m[i] {
+			if i != j {
+				m[i][j] = cell{meters: 1000}
+			}
+		}
+	}
+	for i := 0; i < n-1; i++ {
+		m[i][i+1] = cell{meters: 1}
+	}
+	m[3][4] = cell{} // Two distinct offices can share a building.
+	m[n-1][0] = cell{meters: 2}
+	for _, back := range []bool{false, true} {
+		order := optimize(m, back, false)
+		want := 9.
+		if back {
+			want += 2
+		}
+		if got := length(m, order); got != want {
+			t.Fatalf("10-stop exact solver: got=%v want=%v order=%v", got, want, order)
+		}
+		for i := 0; i < n; i++ {
+			if order[i] != i {
+				t.Fatal("lost directed chain", order)
+			}
+		}
+	}
+}

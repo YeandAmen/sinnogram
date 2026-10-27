@@ -1,6 +1,7 @@
 const $ = id => document.getElementById(id);
 let config, startPlace, stops = [], result = null, busy = false, activePlace = null;
 let locationRequest=0, capturedFix=null, locating=false;
+let searchRequest=0, searchController=null;
 let map, mapPins, editMarker, pendingPin = null, pinMoved = false, mapOrigin = 'plan';
 const km = value => `${(value / 1000).toFixed(1)} km`;
 const number = value => String(value).padStart(2, '0');
@@ -92,7 +93,7 @@ function detail(candidate,kind,index){
   activePlace=candidate;closeMap(false);openPanel('detail');
   $('detail-sketch').innerHTML=sketch(Math.round(candidate.lat*100));
   $('detail-kicker').textContent=kind==='candidate'?'ADDRESS SEARCH / PREVIEW':'A PLACE ON YOUR WAY';
-  $('detail-type').textContent=kind==='candidate'?({address:'ADDRESS LEAD · BUILDING PIN NOT VERIFIED',landmark:'VERIFIED LANDMARK ADDRESS',street:'STREET MATCH · EXACT BUILDING NOT FOUND',place:'MAPPED PLACE',manual:'YOUR CONFIRMED PIN'}[candidate.match]||'LOCATION PREVIEW'):index<0?'STARTING POINT':`STOP ${number(index+1)}`;
+  $('detail-type').textContent=kind==='candidate'?({address:'ADDRESS LEAD · BUILDING PIN NOT VERIFIED',landmark:'VERIFIED LANDMARK ADDRESS',street:'AREA / STREET · EXACT BUILDING NOT FOUND',place:'MAPPED PLACE',manual:'YOUR CONFIRMED PIN'}[candidate.match]||'LOCATION PREVIEW'):index<0?'STARTING POINT':`STOP ${number(index+1)}`;
   $('detail-title').textContent=title(candidate);$('detail-address').textContent=candidate.name;
   $('detail-description').textContent=candidate.description||(result?result.notice:'Add your places, then organize the trip to compare driving distances.');
   setLabel($('detail-source'),'Address source ↗');$('detail-source').hidden=!candidate.source;if(candidate.source)$('detail-source').href=candidate.source;
@@ -102,8 +103,7 @@ function detail(candidate,kind,index){
     const start=el('button','Use as starting point','secondary');start.onclick=()=>openMap(candidate,'start','detail');actions.append(confirm,start);
     if(candidate.unlocated){
       const lookup=el('button','Look for this address on the live map ↗','secondary');
-      lookup.onclick=async()=>{const q=candidate.name.split(' · ').slice(1).join(' · ')||candidate.name;openPanel('plan');$('search').value=q;$('search-status').textContent='Checking the live map for this address…';lookup.disabled=true;
-        try{showSearch(await api('/api/search?live=1&q='+encodeURIComponent(q)))}catch(e){error(e.message);$('search-status').textContent='Your address lead is still available; try the lookup again or choose its map pin.'}finally{lookup.disabled=false}};
+      lookup.onclick=()=>{const q=candidate.name.split(' · ').slice(1).join(' · ')||candidate.name;openPanel('plan');$('search').value=q;runPlaceSearch(q,true)};
       actions.append(lookup);
       for(const [label,url]of [['Find address in Google Maps ↗','https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(candidate.name)],['Find address in Apple Maps ↗','https://maps.apple.com/?q='+encodeURIComponent(candidate.name)]]){const a=el('a',label,'inline-link');a.href=url;a.target='_blank';a.rel='noopener noreferrer';actions.append(a)}
     }
@@ -120,17 +120,42 @@ function detail(candidate,kind,index){
 function showStop(place,index){detail(place,'stop',index)}
 function showCandidate(candidate){detail(candidate,'candidate',-1)}
 function showSearch(data){
-  const root=$('matches');root.replaceChildren();$('search-status').textContent=data.message||`${data.results.length} mapped ${data.results.length===1?'match':'matches'}. Select one to check the pin.`;
-  data.results.forEach(p=>{const b=el('button',undefined,'search-result');const copy=el('div');copy.append(el('small',p.unlocated?'Address lead · no verified pin':p.match==='landmark'?'Landmark address verified':p.match==='street'?'Street only · pin required':'Mapped place'),el('strong',p.name));b.append(copy,el('span','↗'));b.onclick=()=>showCandidate(p);root.append(b)});
+  const root=$('matches');root.replaceChildren();$('search-status').textContent=`${data.results.length} ${data.results.length===1?'result':'results'} for “${data.query}”. ${data.message||'Select a place below to check its pin.'}`;
+  data.results.forEach(p=>{const b=el('button',undefined,'search-result');const copy=el('div');copy.append(el('small',p.unlocated?'Address lead · no verified pin':p.match==='landmark'?'Landmark address verified':p.match==='street'?'Area / street · pin required':'Mapped place'),el('strong',p.name));b.append(copy,el('span','↗'));b.onclick=()=>showCandidate(p);root.append(b)});
   if(!data.results.length){const b=el('button','Place this address on the map ↗','inline-link');b.onclick=()=>openMap({name:data.query,lat:startPlace.lat,lng:startPlace.lng,match:'street'},'stop','plan');root.append(b)}
 }
+function revealPlaceSearch(){
+  $('search-form').scrollIntoView({block:'start',behavior:'auto'});
+}
+async function runPlaceSearch(query,live=false){
+  const q=query.trim(),button=$('search-submit'),status=$('search-status');
+  if(!config){status.textContent='Still connecting. Please try Find places again in a moment.';revealPlaceSearch();return}
+  if(busy){status.textContent='Please wait for the current route calculation, then search again.';revealPlaceSearch();return}
+  if(q.length<2){status.textContent='Enter a place, street or full address (at least two characters).';revealPlaceSearch();$('search').focus({preventScroll:true});return}
+  const request=++searchRequest;if(searchController)searchController.abort();
+  searchController=new AbortController();const controller=searchController;
+  let timedOut=false;const timer=setTimeout(()=>{timedOut=true;controller.abort()},30000);
+  button.disabled=true;setLabel(button,'Searching…');$('search-form').setAttribute('aria-busy','true');
+  status.classList.remove('search-failure');status.textContent=`Looking for “${q}”…`;$('matches').replaceChildren();error('');revealPlaceSearch();
+  try{
+    const data=await api('/api/search?'+(live?'live=1&':'')+'q='+encodeURIComponent(q),{signal:controller.signal});
+    if(request!==searchRequest)return;
+    showSearch(data);revealPlaceSearch();
+  }catch(e){
+    if(request!==searchRequest)return;
+    status.classList.add('search-failure');
+    status.textContent=timedOut?'Search timed out. Try Find places again or choose a pin on the street map.':e.message+' Try Find places again or choose a map pin.';
+    const retry=el('button','Try search again ↗','inline-link');retry.type='button';retry.onclick=()=>runPlaceSearch(q,live);$('matches').append(retry);revealPlaceSearch();
+  }finally{
+    clearTimeout(timer);
+    if(request===searchRequest){searchController=null;button.disabled=busy;setLabel(button,'Find places ↗');$('search-form').setAttribute('aria-busy','false')}
+  }
+}
+setLabel($('search-submit'),'Find places ↗');
 setLabel($('office-directory'),'Find the main Abuja offices ↗');
-$('office-directory').onclick=()=>{if(busy)return;$('search').value='Abuja bank offices';$('search-form').requestSubmit($('search-form').querySelector('button'))};
-$('search-form').onsubmit=async e=>{
-  e.preventDefault();if(!config||busy)return;const q=$('search').value.trim();if(q.length<2){error('Enter at least two characters.');return}
-  const button=e.submitter;button.disabled=true;$('search-status').textContent='Looking up the address…';error('');
-  try{showSearch(await api('/api/search?q='+encodeURIComponent(q)))}catch(e){error(e.message);$('search-status').textContent=''}finally{button.disabled=false}
-};
+$('office-directory').onclick=()=>{$('search').value='Abuja bank offices';runPlaceSearch($('search').value)};
+$('search-form').onsubmit=e=>{e.preventDefault();runPlaceSearch($('search').value)};
+$('search').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();$('search-form').requestSubmit($('search-submit'))}};
 function initMap(){
   if(map)return;
   map=L.map('street-map',{zoomControl:true,attributionControl:true}).setView([9.075,7.46],13);
@@ -169,7 +194,7 @@ $('confirm-pin').onclick=()=>{
   if(place.match==='street'&&!pinMoved)return;
   const confirmed={name:place.name,lat:coords.lat,lng:coords.lng};
   if(action==='start')setStart(confirmed);else if(!addStop(confirmed))return;
-  pendingPin=null;closeMap(false);openPanel('plan');$('matches').replaceChildren();$('search-status').textContent='Pin confirmed. Location added to your day.';$('search').value='';
+  pendingPin=null;closeMap(false);openPanel('plan');$('matches').replaceChildren();$('search-status').classList.remove('search-failure');$('search-status').textContent='Pin confirmed. Location added to your day.';$('search').value='';
 };
 $('map-back').onclick=()=>closeMap();$('exit-map').onclick=()=>closeMap();
 $('manual-map').onclick=()=>openMap({name:$('search').value.trim()||'My map pin',lat:startPlace.lat,lng:startPlace.lng,match:'street'},'stop','plan');

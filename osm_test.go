@@ -196,3 +196,17 @@ func TestExplicitLiveLookupBypassesCoordinateFreeLead(t *testing.T) {
 		t.Fatal(r, e)
 	}
 }
+
+func TestLiveDistrictMatchRequiresExactPin(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `[{"display_name":"Maitama, Abuja","lat":"9.1","lon":"7.5","category":"place","type":"suburb"}]`)
+	}))
+	defer srv.Close()
+	o := newOSM()
+	o.searchURL = srv.URL
+	o.client = srv.Client()
+	rows, e := o.searchRaw(context.Background(), "Maitama")
+	if e != nil || len(rows) != 1 || rows[0].Match != "street" {
+		t.Fatal("district centre treated as an exact building", rows, e)
+	}
+}

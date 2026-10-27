@@ -190,7 +190,7 @@ func (o *osm) searchRaw(ctx context.Context, q string) ([]Candidate, error) {
 			name = string([]rune(name)[:min(150, len([]rune(name)))])
 		}
 		match, description := "place", "Mapped place. Check the pin and entrance before adding it."
-		if r.Category == "highway" || r.Type == "residential" || r.Type == "road" || r.Type == "living_street" || (len(requested) > 1 && !strings.EqualFold(requested[1], r.Address.HouseNumber)) {
+		if r.Category == "place" || r.Category == "boundary" || r.Category == "highway" || r.Type == "residential" || r.Type == "road" || r.Type == "living_street" || (len(requested) > 1 && !strings.EqualFold(requested[1], r.Address.HouseNumber)) {
 			match = "street"
 			description = "Street or area match only. The plot number is not verified. Move the pin to your building before adding this stop."
 		}
