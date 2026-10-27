@@ -1,6 +1,7 @@
 const $ = id => document.getElementById(id);
 let config, startPlace, stops = [], result = null, busy = false, activePlace = null;
 let locationRequest=0, capturedFix=null, locating=false;
+let startSource='none', startCapturedAt=null;
 let searchRequest=0, searchController=null;
 let map, mapPins, editMarker, pendingPin = null, pinMoved = false, mapOrigin = 'plan';
 const km = value => `${(value / 1000).toFixed(1)} km`;
@@ -34,17 +35,32 @@ async function api(path, options) {
 }
 function error(message) {$('error').textContent=message;}
 function save() {
-  if(!config||!startPlace)return;
-  try{localStorage.setItem('axis-trip-v1',JSON.stringify({saved_at:Date.now(),provider:config.provider,start:startPlace,stops,result:config.provider==='google'?null:result,strategy:$('strategy').value,back:$('return').checked}))}catch{$('location-status').textContent='Storage is unavailable. Save your itinerary before opening Maps.'}
+  if(!config)return;
+  try{localStorage.setItem('axis-trip-v1',JSON.stringify({saved_at:Date.now(),provider:config.provider,start:startSource==='gps'?null:startPlace,start_source:startSource,stops,result:!startPlace||startSource==='gps'||config.provider==='google'?null:result,strategy:$('strategy').value,back:$('return').checked}))}catch{$('location-status').textContent='Storage is unavailable. Save your itinerary before opening Maps.'}
 }
 function invalidate(){result=null;error('');save();render();}
-function setStart(place) {
+function setStart(place,{source='manual',capturedAt=null}={}) {
   if(busy)return;
   locationRequest++;capturedFix=null;$('review-location').hidden=true;$('location-status').textContent='';
+  startSource=source;startCapturedAt=capturedAt;
+  setLabel($('locate'),source==='gps'?'◎ Update my current location':'◎ Use my current location');
   startPlace=clean(place);stops=stops.filter(p=>!sameVisit(p,startPlace));
   let option=[...$('start').options].find(o=>o.textContent===startPlace.name);
   if(!option){option=[...$('start').options].find(o=>o.value==='custom');if(!option){option=el('option');option.value='custom';$('start').append(option)}option.textContent=startPlace.name}
-  $('start').value=option.value;invalidate();
+  option.hidden=false;option.disabled=false;$('start').value=option.value;invalidate();
+}
+function clearStart(){
+  locationRequest++;startPlace=null;startSource='none';startCapturedAt=null;capturedFix=null;activePlace=null;
+  for(const option of $('start').options){if(option.value==='custom'){option.hidden=true;option.disabled=true}}
+  $('start').value='';$('review-location').hidden=true;
+  setLabel($('locate'),'◎ Use my current location');invalidate();
+}
+// This fallback centres the street map only; it never becomes a routing origin.
+function mapAnchor(){return startPlace||capturedFix||config?.samples?.[0]||{lat:9.075,lng:7.46}}
+function startPromptCard(){
+  const card=el('button',undefined,'timeline-card'),image=el('span',undefined,'timeline-image'),copy=el('div');image.innerHTML=sketch(3);
+  copy.append(el('span','START WITH WHERE YOU ARE','date'),el('h3',startPlace?title(startPlace):'Set your starting point'),el('p',startSource==='gps'?`Device capture at ${sinnogramLocation.captureTime({capturedAt:startCapturedAt})}.`:startSource==='saved'?'Saved fixed starting point.':'Capture your location or choose a place.'));
+  card.append(image,copy);card.onclick=()=>openPanel('plan');return card;
 }
 function addStop(place){
   if(busy){error("Please wait for the current route calculation.");return false}
@@ -75,14 +91,15 @@ function renderScene(){
 }
 function render(){
   if(!config)return;
+  $('optimize').disabled=busy||locating||!startPlace;$('start-required').hidden=!!startPlace;
   $('nav-count').textContent=number(stops.length);$('stop-count').textContent=`${number(stops.length)} / 10`;
   const list=$('stops');list.replaceChildren();
   if(!stops.length)list.append(el('p','No destinations yet. Search above or place a pin.','micro'));
   stops.forEach((p,i)=>{const row=el('div',undefined,'stop');const name=el('button',title(p),'name');name.onclick=()=>showStop(p,i);const remove=el('button','×','remove');remove.setAttribute('aria-label',`Remove ${title(p)}`);remove.onclick=()=>{stops.splice(i,1);invalidate()};row.append(el('span',number(i+1)),name,remove);list.append(row)});
   const timeline=$('timeline');timeline.replaceChildren();
-  const points=journeyPoints();
-  if(stops.length){points.forEach((p,i)=>{const card=el('button',undefined,'timeline-card');if(sameVisit(p,activePlace))card.classList.add('selected');const image=el('span',undefined,'timeline-image');image.innerHTML=sketch(i+1);const copy=el('div');copy.append(el('span',i===0?'STARTING POINT':`STOP ${number(i)}${result&&i===points.length-1&&sameVisit(p,startPlace)?' · BACK HOME':''}`,'date'),el('h3',title(p)));copy.append(el('p',i===0?'Your day begins here.':result?`${km(result.legs[i-1].meters)} · ${Math.ceil(result.legs[i-1].seconds/60)} min from last stop`:p.name.split(',').slice(1,3).join(',')||'Ready to find its place.'));card.append(image,copy);card.onclick=()=>showStop(p,i-1);timeline.append(card)})}
-  else{const card=el('button',undefined,'timeline-card');const image=el('span',undefined,'timeline-image');image.innerHTML=sketch(3);const copy=el('div');copy.append(el('span','START WITH WHERE YOU ARE','date'),el('h3',startPlace?title(startPlace):'Your starting point'),el('p','Use GPS or choose a place.'));card.append(image,copy);card.onclick=()=>openPanel('plan');timeline.append(card)}
+  const points=startPlace?journeyPoints():[null,...stops];
+  if(stops.length){points.forEach((p,i)=>{if(!p){timeline.append(startPromptCard());return}const card=el('button',undefined,'timeline-card');if(sameVisit(p,activePlace))card.classList.add('selected');const image=el('span',undefined,'timeline-image');image.innerHTML=sketch(i+1);const copy=el('div');copy.append(el('span',i===0?'STARTING POINT':`STOP ${number(i)}${result&&i===points.length-1&&sameVisit(p,startPlace)?' · BACK HOME':''}`,'date'),el('h3',title(p)));copy.append(el('p',i===0?'Your day begins here.':result?`${km(result.legs[i-1].meters)} · ${Math.ceil(result.legs[i-1].seconds/60)} min from last stop`:p.name.split(',').slice(1,3).join(',')||'Ready to find its place.'));card.append(image,copy);card.onclick=()=>showStop(p,i-1);timeline.append(card)})}
+  else{timeline.append(startPromptCard())}
   if(stops.length<10){const card=el('button',undefined,'timeline-card add-card');const copy=el('div');copy.append(el('span','WHAT’S YOUR NEXT STOP?','date'),el('h3','Add a place to your day'),el('p','Search an address or set a map pin.'));card.append(el('span','+','add-sign'),copy);card.onclick=()=>{openPanel('plan');$('search').focus()};timeline.append(card)}
   $('journey-label').textContent=result?($('strategy').value==='input'?'YOUR DAY · IN YOUR CHOSEN ORDER':'YOUR DAY, IN A BETTER ORDER'):stops.length?'YOUR PLACES · READY TO ORGANIZE':'A DAY, WAITING TO TAKE SHAPE';
   $('trip-stats').hidden=!result;
@@ -127,7 +144,7 @@ function showSearch(data){
   if(!data.results.length){
     const google=el('a','Search this business in Google Maps ↗','secondary');google.href='https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(data.query+', Abuja, Nigeria');google.target='_blank';google.rel='noopener noreferrer';root.append(google);
     const help=el('p','Google Maps has its own business listings. This opens Google; it does not import or verify a pin in Sinnogram.','micro');root.append(help);
-    const b=el('button','Place this address on the map ↗','inline-link');b.onclick=()=>openMap({name:data.query,lat:startPlace.lat,lng:startPlace.lng,match:'street'},'stop','plan');root.append(b)
+    const b=el('button','Place this address on the map ↗','inline-link');b.onclick=()=>openMap({name:data.query,lat:mapAnchor().lat,lng:mapAnchor().lng,match:'street'},'stop','plan');root.append(b)
   }
 }
 function revealPlaceSearch(){
@@ -182,14 +199,14 @@ function setMapPin(latlng,moved=false){
 }
 function openMap(place=null,action='inspect',origin='explore'){
   const unlocated=!!place?.unlocated;
-  if(unlocated)place={...place,lat:startPlace.lat,lng:startPlace.lng,match:'street',unlocated:false};
+  if(unlocated)place={...place,lat:mapAnchor().lat,lng:mapAnchor().lng,match:'street',unlocated:false};
   openPanel(null);$('street-map').hidden=false;$('map-instruction').hidden=false;$('stage-heading').hidden=true;$('scene-hint').hidden=true;$('view-controls').hidden=true;
   $('nav-map').classList.add('active');$('nav-explore').classList.remove('active');mapOrigin=origin;pendingPin=place?{place,action}:null;pinMoved=false;
   $('map-confirm').hidden=!place;setLabel($('confirm-pin'),action==='start'?'Set starting point ↗':action==='inspect'?'Back to place ↗':'Add confirmed stop ↗');
   initMap();map.invalidateSize();mapPins.clearLayers();if(editMarker){map.removeLayer(editMarker);editMarker=null;}
   journeyPoints().forEach(p=>L.circleMarker([p.lat,p.lng],{radius:5,weight:1,color:'#35342c',fillColor:'#f1eee5',fillOpacity:1}).bindTooltip(el('span',title(p))).addTo(mapPins));
   if(place){map.setView([place.lat,place.lng],unlocated?12:needsPin(place)?16:17);setMapPin(L.latLng(place.lat,place.lng));}
-  else{const points=journeyPoints();if(points.length>1)map.fitBounds(points.map(p=>[p.lat,p.lng]),{padding:[70,70],maxZoom:15});else map.setView([startPlace.lat,startPlace.lng],14)}
+  else{const points=journeyPoints();if(points.length>1)map.fitBounds(points.map(p=>[p.lat,p.lng]),{padding:[70,70],maxZoom:15});else{const anchor=points[0]||mapAnchor();map.setView([anchor.lat,anchor.lng],14)}}
 }
 function closeMap(restore=true){
   $('street-map').hidden=true;$('map-instruction').hidden=true;$('map-confirm').hidden=true;$('stage-heading').hidden=false;$('scene-hint').hidden=false;$('view-controls').hidden=false;$('nav-map').classList.remove('active');
@@ -199,52 +216,56 @@ $('confirm-pin').onclick=()=>{
   if(!pendingPin)return;const {place,action,coords}=pendingPin;if(action==='inspect'){closeMap();return}
   if(needsPin(place)&&!pinMoved)return;
   const confirmed={name:place.name,lat:coords.lat,lng:coords.lng};
-  if(action==='start')setStart(confirmed);else if(!addStop(confirmed))return;
+  if(action==='start'){const fromGPS=pendingPin.startSource==='gps';if(fromGPS&&pinMoved)confirmed.name=`Chosen starting pin · ${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}`;setStart(confirmed,{source:fromGPS?'gps':'manual',capturedAt:pendingPin.capturedAt||null});$('location-status').textContent=fromGPS?'Starting pin confirmed for this visit. Capture your location again after moving.':'Starting point selected on the map.'}else if(!addStop(confirmed))return;
   pendingPin=null;closeMap(false);openPanel('plan');$('matches').replaceChildren();$('search-status').classList.remove('search-failure');$('search-status').textContent='Pin confirmed. Location added to your day.';$('search').value='';
 };
 $('map-back').onclick=()=>closeMap();$('exit-map').onclick=()=>closeMap();
-$('manual-map').onclick=()=>openMap({name:$('search').value.trim()||'My map pin',lat:startPlace.lat,lng:startPlace.lng,match:'street'},'stop','plan');
+$('manual-map').onclick=()=>openMap({name:$('search').value.trim()||'My map pin',lat:mapAnchor().lat,lng:mapAnchor().lng,match:'street'},'stop','plan');
 $('pin-add').onclick=()=>{const parts=$('pin-coords').value.split(',').map(v=>v.trim()),name=$('pin-name').value.trim();const [lat,lng]=parts.map(Number);if(!name||parts.length!==2||parts.some(v=>!v)||!Number.isFinite(lat)||!Number.isFinite(lng)||Math.abs(lat)>90||Math.abs(lng)>180){error('Enter a name and valid latitude, longitude.');return}showCandidate({name,lat,lng,match:'manual',description:'Your pasted coordinates. Check the map pin before adding it.'})};
-$('start').onchange=()=>{const value=$('start').value;if(value==='custom')return;setStart(config.samples[Number(value)])};
+$('start').onchange=()=>{const value=$('start').value;if(value==='custom')return;if(value===''){clearStart();return}setStart(config.samples[Number(value)])};
 function reviewCapturedLocation(){
   if(!capturedFix)return;
   const f=capturedFix;
   openMap({name:`Device location · ${sinnogramLocation.coordinates(f)}`,lat:f.lat,lng:f.lng,match:f.needsConfirmation?'street':'place'},'start','plan');
+  pendingPin.startSource='gps';pendingPin.capturedAt=f.capturedAt;
   L.circle([f.lat,f.lng],{radius:f.accuracy,weight:1,color:'#6f7565',fillOpacity:.08}).addTo(mapPins);
   map.fitBounds(L.latLng(f.lat,f.lng).toBounds(Math.max(150,f.accuracy*3)),{maxZoom:18,padding:[30,70]});
   $('pin-position').textContent=`Device accuracy about ${Math.round(f.accuracy)} m · ${f.needsConfirmation?'Move the pin to your actual starting point':'Check the captured point'}`;
 }
 $('review-location').onclick=reviewCapturedLocation;
 $('locate').onclick=()=>{
-  if(busy||locating||!config)return;
+  if(busy||locating)return;
+  if(!config){$('location-status').textContent='Still connecting. Try location capture again in a moment.';return}
+  clearStart();
   if(!window.isSecureContext){$('location-status').textContent='Location needs a secure HTTPS connection. Open the live Sinnogram link or choose a map pin.';return}
   if(!navigator.geolocation){$('location-status').textContent='This browser does not support location capture. Choose a starting pin on the map.';return}
-  const request=++locationRequest,b=$('locate');locating=true;b.disabled=true;$('optimize').disabled=true;
-  const finish=()=>{locating=false;b.disabled=busy;$('optimize').disabled=busy};capturedFix=null;$('review-location').hidden=true;$('location-status').textContent='Capturing a fresh device location…';
+  const request=++locationRequest,b=$('locate');locating=true;b.disabled=true;setLabel(b,'◎ Capturing location…');$('optimize').disabled=true;
+  const finish=()=>{locating=false;b.disabled=busy;$('optimize').disabled=busy||!startPlace;setLabel(b,startSource==='gps'?'◎ Update my current location':'◎ Use my current location')};capturedFix=null;$('review-location').hidden=true;$('location-status').textContent='Capturing a fresh device location…';
   navigator.geolocation.getCurrentPosition(async pos=>{
     if(request!==locationRequest){finish();return}
     let fix;try{fix=sinnogramLocation.readFix(pos)}catch(e){$('location-status').textContent=e.message;finish();return}
     if(fix.needsConfirmation){
-      capturedFix=fix;$('review-location').hidden=false;$('location-status').textContent=`Your device reports a broad area (about ${Math.round(fix.accuracy)} m accuracy). Check the map and place your actual starting pin; your existing start has not changed.`;finish();return;
+      capturedFix=fix;$('review-location').hidden=false;$('location-status').textContent=`Your device reports a broad area (about ${Math.round(fix.accuracy)} m accuracy). Check the map and place your actual starting pin before routing.`;finish();return;
     }
     const coordinateName=`GPS · ${sinnogramLocation.coordinates(fix)}`;
-    setStart({name:coordinateName,lat:fix.lat,lng:fix.lng});capturedFix=fix;$('review-location').hidden=false;
+    setStart({name:coordinateName,lat:fix.lat,lng:fix.lng},{source:'gps',capturedAt:fix.capturedAt});capturedFix=fix;$('review-location').hidden=false;
     const currentRequest=locationRequest;
-    $('location-status').textContent=`Captured ${sinnogramLocation.coordinates(fix)} · accuracy about ${Math.round(fix.accuracy)} m. Finding the nearby street…`;
+    $('location-status').textContent=`Captured at ${sinnogramLocation.captureTime(fix)} · ${sinnogramLocation.coordinates(fix)} · accuracy about ${Math.round(fix.accuracy)} m. Finding the nearby street…`;
+    setLabel(b,'◎ Finding street name…');
     try{
       const label=await api('/api/reverse',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({lat:fix.lat,lng:fix.lng})});
       if(locationRequest!==currentRequest)return;
-      setStart({name:label.name,lat:fix.lat,lng:fix.lng});capturedFix=fix;$('review-location').hidden=false;
-      $('location-status').textContent=`${label.name} · ${sinnogramLocation.coordinates(fix)} · accuracy about ${Math.round(fix.accuracy)} m. Routing uses the captured coordinates; the street name is approximate.`;
-    }catch(e){if(locationRequest===currentRequest)$('location-status').textContent=`Captured ${sinnogramLocation.coordinates(fix)} · accuracy about ${Math.round(fix.accuracy)} m. Street-name lookup unavailable; your captured coordinates are set.`}
+      setStart({name:label.name,lat:fix.lat,lng:fix.lng},{source:'gps',capturedAt:fix.capturedAt});capturedFix=fix;$('review-location').hidden=false;
+      $('location-status').textContent=`${label.name} · captured at ${sinnogramLocation.captureTime(fix)} · ${sinnogramLocation.coordinates(fix)} · accuracy about ${Math.round(fix.accuracy)} m. Routing uses the captured coordinates; the street name is approximate.`;
+    }catch(e){if(locationRequest===currentRequest)$('location-status').textContent=`Captured at ${sinnogramLocation.captureTime(fix)} · ${sinnogramLocation.coordinates(fix)} · accuracy about ${Math.round(fix.accuracy)} m. Street-name lookup unavailable; your captured coordinates are set.`}
     finally{finish()}
   },err=>{if(request===locationRequest)$('location-status').textContent=sinnogramLocation.errorMessage(err);finish()},sinnogramLocation.options);
 };
 $('strategy').onchange=invalidate;$('return').onchange=invalidate;
-$('example').onclick=()=>{if(!config)return;startPlace=clean(config.samples[0]);$('start').value='0';stops=[config.samples[3],config.samples[2],config.samples[4],config.samples[1]].map(clean);invalidate()};
+$('example').onclick=()=>{if(!config)return;setStart(config.samples[0]);stops=[config.samples[3],config.samples[2],config.samples[4],config.samples[1]].map(clean);invalidate()};
 $('clear').onclick=()=>{stops=[];result=null;activePlace=null;try{localStorage.removeItem('axis-trip-v1')}catch{};$('matches').replaceChildren();$('search-status').textContent='Trip cleared.';render()};
 $('optimize').onclick=async()=>{
-  if(!config||busy||locating)return;if(!stops.length){error('Add at least one destination first.');return}
+  if(!config||busy||locating)return;if(!startPlace){error('Capture your current location or choose a starting point first.');return}if(!stops.length){error('Add at least one destination first.');return}
   busy=true;error('');document.querySelectorAll('#plan-panel button,#plan-panel input,#plan-panel select,#plan-panel textarea').forEach(e=>e.disabled=true);$('optimize').textContent='Finding your best order…';
   try{result=await api('/api/optimize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({start:startPlace,stops,round_trip:$('return').checked,strategy:$('strategy').value})});save();render();openPanel(null);showStop(result.legs[0].to,0);$('footer-status').textContent='ROAD ESTIMATES · NO LIVE TRAFFIC'}catch(e){error(e.message)}finally{busy=false;document.querySelectorAll('#plan-panel button,#plan-panel input,#plan-panel select,#plan-panel textarea').forEach(e=>e.disabled=false);$('optimize').replaceChildren(document.createTextNode('Organize my trip '),el('span','↗'))}
 };
@@ -256,12 +277,23 @@ sinnogramScene.onSelect=p=>{const index=stops.findIndex(v=>same(v,p));if(index>=
 $('about').onclick=()=>$('about-dialog').showModal();$('close-about').onclick=()=>$('about-dialog').close();
 (async()=>{
   try{
-    config=await api('/api/config');startPlace=clean(config.samples[0]);config.samples.forEach((p,i)=>{const o=el('option',p.name);o.value=i;$('start').append(o)});
+    config=await api('/api/config');startPlace=null;$('location-status').textContent='Capture your current location or choose a starting place.';const placeholder=el('option','Capture your location or choose a start');placeholder.value='';$('start').append(placeholder);$('start').value='';config.samples.forEach((p,i)=>{const o=el('option',p.name);o.value=i;$('start').append(o)});
     $('provider-label').textContent=config.provider==='osm'?'· OSM / ROADS':config.provider==='google'?'· GOOGLE / ROADS':'· DEMO';
     let stored;try{stored=JSON.parse(localStorage.getItem('axis-trip-v1'))}catch{}
-    if(stored?.start&&Date.now()-stored.saved_at<86400000&&stored.provider===config.provider&&Array.isArray(stored.stops)&&stored.stops.length<=10){
-      startPlace=clean(stored.start);stops=stored.stops.map(clean);const i=config.samples.findIndex(p=>same(p,startPlace));if(i>=0)$('start').value=i;else{const o=el('option',startPlace.name);o.value='custom';$('start').append(o);$('start').value='custom'}
-      $('strategy').value=['nearest','input'].includes(stored.strategy)?stored.strategy:'shortest';$('return').checked=!!stored.back;result=stored.result?.legs?.length?stored.result:null;
+    if(stored&&Date.now()-stored.saved_at>=0&&Date.now()-stored.saved_at<86400000&&stored.provider===config.provider&&Array.isArray(stored.stops)&&stored.stops.length<=10){
+      stops=stored.stops.map(clean);
+      $('strategy').value=['nearest','input'].includes(stored.strategy)?stored.strategy:'shortest';$('return').checked=!!stored.back;
+      // Legacy saves did not distinguish GPS fixes from fixed places. Require a
+      // new origin rather than presenting an old device location as current.
+      if(stored.start&&['manual','saved'].includes(stored.start_source)){
+        startPlace=clean(stored.start);startSource='saved';
+        const option=el('option','Saved · '+startPlace.name);option.value='custom';$('start').append(option);$('start').value='custom';
+        result=stored.result?.legs?.length&&same(stored.result.legs[0].from,startPlace)?stored.result:null;
+        $('location-status').textContent='Saved fixed starting point. Use your current location to capture where you are now.';
+      }else{
+        $('location-status').textContent=stops.length?'Your saved stops are restored. Capture a fresh location or choose a starting point.':'Capture a fresh location or choose a starting point.';
+      }
+      save();
     }
     render();
     api('/api/location-coverage').then(c=>{

@@ -9,6 +9,7 @@
   }
   const coordinates=fix=>`${fix.lat.toFixed(6)}, ${fix.lng.toFixed(6)}`;
   const errorMessage=err=>({1:'Location permission is off. Allow location for this site in your browser settings, then try again. You can also choose a map pin.',2:'Your device could not determine its location. Check Location Services or choose a map pin.',3:'Location capture timed out. Try again outdoors or choose a map pin.'}[err?.code]||'Location is unavailable. Try again or choose a map pin.');
-  const api={options,readFix,coordinates,errorMessage};
+  const captureTime=fix=>new Date(fix.capturedAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const api={options,readFix,coordinates,errorMessage,captureTime};
   root.sinnogramLocation=api;
 })(globalThis);

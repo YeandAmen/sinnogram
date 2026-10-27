@@ -1,7 +1,7 @@
 const vm=require('node:vm');
 const fs=require('node:fs');
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
-async function app(reverse,search=async()=>({ok:true,json:async()=>({query:"",results:[]})})){
+async function app(reverse,search=async()=>({ok:true,json:async()=>({query:"",results:[]})}),settings={}){
  class Element {
   constructor(){this.options=[];this.children=[];this.value='';this.scrolls=0;this.attributes={};this.classList={toggle(){},add(){},remove(){}}}
   append(...nodes){this.children.push(...nodes);this.options.push(...nodes)}
@@ -9,10 +9,11 @@ async function app(reverse,search=async()=>({ok:true,json:async()=>({query:"",re
   setAttribute(k,v){this.attributes[k]=v} focus(){} scrollIntoView(){this.scrolls++} requestSubmit(button){this.onsubmit({preventDefault(){},submitter:button})} querySelector(){return new Element()}
  }
  const elements=new Map();const $=id=>{if(!elements.has(id))elements.set(id,new Element());return elements.get(id)};
- let success, failure, options;
- const context=vm.createContext({console,URL,Blob,AbortController,setTimeout,clearTimeout,Date,window:{isSecureContext:true},localStorage:{getItem:()=>null,setItem(){}},
+ const storage=settings.storage||new Map();
+ let success, failure, options,captures=0;
+ const context=vm.createContext({console,URL,Blob,AbortController,setTimeout,clearTimeout,Date,window:{isSecureContext:true},localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
   document:{getElementById:$,createElement:()=>new Element(),createElementNS:()=>new Element(),createTextNode:s=>s,querySelectorAll:()=>[]},
-  navigator:{geolocation:{getCurrentPosition(a,b,c){success=a;failure=b;options=c}}},
+  navigator:{geolocation:{getCurrentPosition(a,b,c){captures++;success=a;failure=b;options=c}}},
   sinnogramScene:{set(){},zoomBy(){},reset(){}},
   fetch:async(path,init)=>{
    if(path==='/api/reverse')return reverse(path,init);
@@ -23,6 +24,6 @@ async function app(reverse,search=async()=>({ok:true,json:async()=>({query:"",re
  });
  vm.runInContext(fs.readFileSync(require.resolve('../web/location.js'),'utf8'),context);
  vm.runInContext(fs.readFileSync(require.resolve('../web/app.js'),'utf8'),context);await tick();
- return {$,context,run:(q)=>vm.runInContext('runPlaceSearch('+JSON.stringify(q)+')',context),start:()=>JSON.parse(vm.runInContext('JSON.stringify(startPlace)',context)),capture:()=>{$('locate').onclick();return {success,failure,options}}};
+ return {$,context,storage,captures:()=>captures,run:(q)=>vm.runInContext('runPlaceSearch('+JSON.stringify(q)+')',context),start:()=>JSON.parse(vm.runInContext('JSON.stringify(startPlace)',context)),capture:()=>{$('locate').onclick();return {success,failure,options}}};
 }
 module.exports={app,tick};
