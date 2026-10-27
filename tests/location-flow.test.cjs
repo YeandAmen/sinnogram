@@ -87,3 +87,23 @@ test('superseded capture cannot retry or overwrite a manually selected start',as
  vm.runInContext("setStart({name:'Chosen start',lat:9.1,lng:7.5})",a.context);
  first.failure({code:2});assert.equal(a.captures(),1);assert.equal(a.start().name,'Chosen start');
 });
+test('slow street lookup cannot lock a captured origin or interfere with a newer capture',async()=>{
+ let resolve;const a=await app(()=>new Promise(r=>resolve=r));
+ const pending=a.capture().success(fix(10));await tick();
+ assert.equal(a.$('locate').disabled,false);assert.equal(a.$('optimize').disabled,false);
+ assert.equal(a.start().lat,9.0811598);
+ const second=a.capture();assert.equal(a.start(),null);assert.equal(a.$('locate').disabled,true);
+ resolve({ok:true,json:async()=>({name:'Old label'})});await pending;
+ assert.equal(a.start(),null);assert.equal(a.$('locate').disabled,true);assert.equal(a.$('optimize').disabled,true);
+ second.failure({code:1});assert.equal(a.$('locate').disabled,false);
+});
+test('street lookup times out without losing a usable device fix',async()=>{
+ let expire,delay,cleared=false;
+ const a=await app((_,init)=>new Promise((resolve,reject)=>init.signal.addEventListener('abort',()=>reject(Error('aborted')))),undefined,{
+  setTimeout:(fn,ms)=>{expire=fn;delay=ms;return 1},clearTimeout:()=>{cleared=true}
+ });
+ const pending=a.capture().success(fix(15));await tick();
+ assert.equal(delay,8000);assert.equal(a.$('locate').disabled,false);assert.equal(a.start().lat,9.0811598);
+ expire();await pending;assert.equal(cleared,true);assert.equal(a.$('optimize').disabled,false);
+ assert.match(a.$('location-status').textContent,/lookup unavailable; your captured coordinates are set/);
+});

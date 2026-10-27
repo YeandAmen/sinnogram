@@ -11,7 +11,7 @@ async function app(reverse,search=async()=>({ok:true,json:async()=>({query:"",re
  const elements=new Map();const $=id=>{if(!elements.has(id))elements.set(id,new Element());return elements.get(id)};
  const storage=settings.storage||new Map();
  let success, failure, options,captures=0;
- const context=vm.createContext({console,URL,Blob,AbortController,setTimeout,clearTimeout,Date,window:{isSecureContext:true},localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
+ const context=vm.createContext({console,URL,Blob,AbortController,setTimeout:settings.setTimeout||setTimeout,clearTimeout:settings.clearTimeout||clearTimeout,Date,window:{isSecureContext:true},localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
   document:{getElementById:$,createElement:()=>new Element(),createElementNS:()=>new Element(),createTextNode:s=>s,querySelectorAll:()=>[]},
   navigator:{geolocation:{getCurrentPosition(a,b,c){captures++;success=a;failure=b;options=c}}},
   sinnogramScene:{set(){},zoomBy(){},reset(){}},

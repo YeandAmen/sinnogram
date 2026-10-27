@@ -251,14 +251,16 @@ $('locate').onclick=()=>{
     setStart({name:coordinateName,lat:fix.lat,lng:fix.lng},{source:'gps',capturedAt:fix.capturedAt});capturedFix=fix;$('review-location').hidden=false;
     const currentRequest=locationRequest;
     $('location-status').textContent=`Captured at ${sinnogramLocation.captureTime(fix)} · ${sinnogramLocation.coordinates(fix)} · accuracy about ${Math.round(fix.accuracy)} m. Finding the nearby street…`;
-    setLabel(b,'◎ Finding street name…');
+    // The measured point is ready. An optional street name must not lock capture or routing.
+    finish();
+    const controller=new AbortController(),lookupTimer=setTimeout(()=>controller.abort(),8000);
     try{
-      const label=await api('/api/reverse',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({lat:fix.lat,lng:fix.lng})});
+      const label=await api('/api/reverse',{method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,body:JSON.stringify({lat:fix.lat,lng:fix.lng})});
       if(locationRequest!==currentRequest)return;
       setStart({name:label.name,lat:fix.lat,lng:fix.lng},{source:'gps',capturedAt:fix.capturedAt});capturedFix=fix;$('review-location').hidden=false;
       $('location-status').textContent=`${label.name} · captured at ${sinnogramLocation.captureTime(fix)} · ${sinnogramLocation.coordinates(fix)} · accuracy about ${Math.round(fix.accuracy)} m. Routing uses the captured coordinates; the street name is approximate.`;
     }catch(e){if(locationRequest===currentRequest)$('location-status').textContent=`Captured at ${sinnogramLocation.captureTime(fix)} · ${sinnogramLocation.coordinates(fix)} · accuracy about ${Math.round(fix.accuracy)} m. Street-name lookup unavailable; your captured coordinates are set.`}
-    finally{finish()}
+    finally{clearTimeout(lookupTimer)}
   },err=>{
     if(request!==locationRequest){finish();return}
     if(!retry&&(err.code===2||err.code===3)){
