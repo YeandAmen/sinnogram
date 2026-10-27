@@ -296,17 +296,17 @@ func validate(t Trip) error {
 	if len(t.Stops) < 1 || len(t.Stops) > 10 {
 		return errors.New("add between 1 and 10 stops")
 	}
-	if t.Strategy != "shortest" && t.Strategy != "nearest" {
-		return errors.New("choose shortest or nearest strategy")
+	if t.Strategy != "shortest" && t.Strategy != "nearest" && t.Strategy != "input" {
+		return errors.New("choose shortest, nearest, or input strategy")
 	}
 	seen := map[string]bool{}
 	for _, p := range append([]Place{t.Start}, t.Stops...) {
 		if strings.TrimSpace(p.Name) == "" || len(p.Name) > 300 || math.IsNaN(p.Lat) || math.IsNaN(p.Lng) || math.IsInf(p.Lat, 0) || math.IsInf(p.Lng, 0) || p.Lat < -90 || p.Lat > 90 || p.Lng < -180 || p.Lng > 180 {
 			return errors.New("each location needs a name and valid coordinates")
 		}
-		k := fmt.Sprintf("%.6f,%.6f", p.Lat, p.Lng)
+		k := fmt.Sprintf("%.6f,%.6f,%s", p.Lat, p.Lng, strings.ToLower(strings.TrimSpace(p.Name)))
 		if seen[k] {
-			return errors.New("choose different locations for the start and each stop")
+			return errors.New("that named location is already in the trip")
 		}
 		seen[k] = true
 	}
@@ -321,6 +321,9 @@ func buildResult(t Trip, m [][]cell, source string) Result {
 	}
 	if t.RoundTrip {
 		original = append(original, 0)
+	}
+	if t.Strategy == "input" {
+		order = original
 	}
 	r := Result{Legs: []Leg{}, Provider: source, OriginalMeters: length(m, original)}
 	for i := 1; i < len(order); i++ {
@@ -341,6 +344,10 @@ func buildResult(t Trip, m [][]cell, source string) Result {
 		r.Notice = "Road estimates by OSRM / FOSSGIS using © OpenStreetMap contributors (ODbL). No live traffic; driving times exclude stops. Visit order minimizes distance among OSRM's suggested driving routes. Free personal-test service; check each pin and road access before travelling."
 	} else {
 		r.Notice = fmt.Sprintf("Powered by Google, ©%d Google. Driving distances and times exclude live traffic. Visit order minimizes distance; map links navigate one leg at a time.", time.Now().Year())
+	}
+	if t.Strategy == "input" {
+		r.Notice = strings.ReplaceAll(r.Notice, "Visit order minimizes distance among OSRM's suggested driving routes.", "Your entered visit order is preserved.")
+		r.Notice = strings.ReplaceAll(r.Notice, "Visit order minimizes distance;", "Your entered visit order is preserved;")
 	}
 	return r
 }

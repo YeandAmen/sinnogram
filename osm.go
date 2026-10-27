@@ -104,6 +104,7 @@ type Candidate struct {
 	Match       string `json:"match"`
 	Description string `json:"description"`
 	Source      string `json:"source,omitempty"`
+	PinSource   string `json:"pin_source,omitempty"`
 }
 type SearchResponse struct {
 	Results []Candidate `json:"results"`
@@ -120,14 +121,32 @@ func normalizeAddress(q string) string {
 	q = searchWhitespace.ReplaceAllString(q, " ")
 	return strings.TrimSpace(q)
 }
+
+var streetWord = regexp.MustCompile(`(?i)\b(street|st\.?|crescent|close|avenue|ave\.?|road|rd\.?|way|drive|boulevard)\b`)
+var initials = regexp.MustCompile(`\b([A-Za-z])\.\s*([A-Za-z])\.?`)
+
 func streetQuery(q string) string {
 	q = plotNumber.ReplaceAllString(q, "")
 	q = districtWord.ReplaceAllString(q, "")
+	q = initials.ReplaceAllString(q, "$1 $2")
 	parts := []string{}
+	foundStreet := false
 	for _, v := range strings.Split(q, ",") {
-		if v = strings.TrimSpace(v); v != "" {
-			parts = append(parts, v)
+		v = strings.TrimSpace(v)
+		if v == "" {
+			continue
 		}
+		if !foundStreet {
+			if !streetWord.MatchString(v) {
+				continue
+			}
+			foundStreet = true
+		}
+		lower := strings.ToLower(v)
+		if lower == "nigeria" || lower == "nigeria." || lower == "federal capital territory" {
+			continue
+		}
+		parts = append(parts, v)
 	}
 	return strings.Join(parts, ", ")
 }
@@ -183,12 +202,9 @@ func (o *osm) searchRaw(ctx context.Context, q string) ([]Candidate, error) {
 func (o *osm) SearchDetailed(ctx context.Context, q string) (SearchResponse, error) {
 	q = normalizeAddress(q)
 	result := SearchResponse{Query: q, Results: []Candidate{}}
-	lower := strings.ToLower(q)
-	// Official address: vendor.nirsal.com. Building pin: OSM NIRSAL Plc, checked 27 Oct 2026.
-	// A labelled directory match is distinct from a claimed house-number geocode.
-	if (strings.Contains(lower, "1581") && strings.Contains(lower, "tigris")) || strings.Contains(lower, "nirsal") {
-		result.Results = []Candidate{{Place: Place{Name: "NIRSAL Head Office · Plot 1581, Tigris Crescent, Maitama, Abuja", Lat: 9.0811598, Lng: 7.4934709}, Match: "landmark", Description: "NIRSAL's official address matches Plot 1581, Tigris Crescent. This is its mapped building pin; check the entrance on the map.", Source: "https://vendor.nirsal.com/"}}
-		result.Message = "Found by the verified landmark name: NIRSAL Head Office."
+	if rows := officeSearch(q); len(rows) > 0 {
+		result.Results = rows
+		result.Message = "Found the published Abuja office address. Check the pin details before adding."
 		return result, nil
 	}
 	rows, e := o.searchRaw(ctx, q)

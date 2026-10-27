@@ -172,3 +172,33 @@ func TestOriginGuard(t *testing.T) {
 		t.Fatal("cross-origin request accepted")
 	}
 }
+
+func TestEnteredOrderAndSharedBuilding(t *testing.T) {
+	trip := Trip{Start: abujaOffices[0].Place, Stops: []Place{abujaOffices[3].Place, abujaOffices[4].Place, abujaOffices[6].Place}, Strategy: "input"}
+	if err := validate(trip); err != nil {
+		t.Fatal("distinct offices in one building must be allowed", err)
+	}
+	m, err := (demo{}).Matrix(context.Background(), append([]Place{trip.Start}, trip.Stops...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, back := range []bool{false, true} {
+		trip.RoundTrip = back
+		r := buildResult(trip, m, "osm")
+		for i, p := range trip.Stops {
+			if r.Legs[i].To != p {
+				t.Fatal("entered order changed", r)
+			}
+		}
+		if r.SavedMeters != 0 {
+			t.Fatal("preserved order should compare equal", r.SavedMeters)
+		}
+		if back && r.Legs[len(r.Legs)-1].To != trip.Start {
+			t.Fatal("missing return")
+		}
+	}
+	trip.Stops = append(trip.Stops, trip.Stops[0])
+	if validate(trip) == nil {
+		t.Fatal("duplicate named visit accepted")
+	}
+}

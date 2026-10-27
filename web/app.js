@@ -5,6 +5,7 @@ const km = value => `${(value / 1000).toFixed(1)} km`;
 const number = value => String(value).padStart(2, '0');
 const clean = p => ({name:p.name,lat:Number(p.lat),lng:Number(p.lng)});
 const same = (a,b) => !!a && !!b && a.lat === b.lat && a.lng === b.lng;
+const sameVisit = (a,b) => same(a,b) && a.name.trim().toLowerCase()===b.name.trim().toLowerCase();
 const title = p => p.name.split(' · ')[0].split(',')[0];
 const iconPaths = {
   '↗':'<path d="M5 19 19 5M5 5h14v14"/>',
@@ -36,7 +37,7 @@ function save() {
 function invalidate(){result=null;error('');save();render();}
 function setStart(place) {
   if(busy)return;
-  startPlace=clean(place);stops=stops.filter(p=>!same(p,startPlace));
+  startPlace=clean(place);stops=stops.filter(p=>!sameVisit(p,startPlace));
   let option=[...$('start').options].find(o=>o.textContent===startPlace.name);
   if(!option){option=el('option',startPlace.name);option.value='custom';$('start').append(option)}
   $('start').value=option.value;invalidate();
@@ -44,7 +45,7 @@ function setStart(place) {
 function addStop(place){
   if(busy){error("Please wait for the current route calculation.");return false}
   if(stops.length>=10){openPanel('plan');error('You can add up to 10 stops.');return false}
-  if([startPlace,...stops].some(p=>same(p,place))){openPanel('plan');error('That location is already in your trip.');return false}
+  if([startPlace,...stops].some(p=>sameVisit(p,place))){openPanel('plan');error('That location is already in your trip.');return false}
   stops.push(clean(place));invalidate();return true;
 }
 function openPanel(name){
@@ -76,10 +77,10 @@ function render(){
   stops.forEach((p,i)=>{const row=el('div',undefined,'stop');const name=el('button',title(p),'name');name.onclick=()=>showStop(p,i);const remove=el('button','×','remove');remove.setAttribute('aria-label',`Remove ${title(p)}`);remove.onclick=()=>{stops.splice(i,1);invalidate()};row.append(el('span',number(i+1)),name,remove);list.append(row)});
   const timeline=$('timeline');timeline.replaceChildren();
   const points=journeyPoints();
-  if(stops.length){points.forEach((p,i)=>{const card=el('button',undefined,'timeline-card');if(same(p,activePlace))card.classList.add('selected');const image=el('span',undefined,'timeline-image');image.innerHTML=sketch(i+1);const copy=el('div');copy.append(el('span',i===0?'STARTING POINT':`STOP ${number(i)}${result&&i===points.length-1&&same(p,startPlace)?' · BACK HOME':''}`,'date'),el('h3',title(p)));copy.append(el('p',i===0?'Your day begins here.':result?`${km(result.legs[i-1].meters)} · ${Math.ceil(result.legs[i-1].seconds/60)} min from last stop`:p.name.split(',').slice(1,3).join(',')||'Ready to find its place.'));card.append(image,copy);card.onclick=()=>showStop(p,i-1);timeline.append(card)})}
+  if(stops.length){points.forEach((p,i)=>{const card=el('button',undefined,'timeline-card');if(sameVisit(p,activePlace))card.classList.add('selected');const image=el('span',undefined,'timeline-image');image.innerHTML=sketch(i+1);const copy=el('div');copy.append(el('span',i===0?'STARTING POINT':`STOP ${number(i)}${result&&i===points.length-1&&sameVisit(p,startPlace)?' · BACK HOME':''}`,'date'),el('h3',title(p)));copy.append(el('p',i===0?'Your day begins here.':result?`${km(result.legs[i-1].meters)} · ${Math.ceil(result.legs[i-1].seconds/60)} min from last stop`:p.name.split(',').slice(1,3).join(',')||'Ready to find its place.'));card.append(image,copy);card.onclick=()=>showStop(p,i-1);timeline.append(card)})}
   else{const card=el('button',undefined,'timeline-card');const image=el('span',undefined,'timeline-image');image.innerHTML=sketch(3);const copy=el('div');copy.append(el('span','START WITH WHERE YOU ARE','date'),el('h3',startPlace?title(startPlace):'Your starting point'),el('p','Use GPS or choose a place.'));card.append(image,copy);card.onclick=()=>openPanel('plan');timeline.append(card)}
   if(stops.length<10){const card=el('button',undefined,'timeline-card add-card');const copy=el('div');copy.append(el('span','WHAT’S YOUR NEXT STOP?','date'),el('h3','Add a place to your day'),el('p','Search an address or set a map pin.'));card.append(el('span','+','add-sign'),copy);card.onclick=()=>{openPanel('plan');$('search').focus()};timeline.append(card)}
-  $('journey-label').textContent=result?'YOUR DAY, IN A BETTER ORDER':stops.length?'YOUR PLACES · READY TO ORGANIZE':'A DAY, WAITING TO TAKE SHAPE';
+  $('journey-label').textContent=result?($('strategy').value==='input'?'YOUR DAY · IN YOUR CHOSEN ORDER':'YOUR DAY, IN A BETTER ORDER'):stops.length?'YOUR PLACES · READY TO ORGANIZE':'A DAY, WAITING TO TAKE SHAPE';
   $('trip-stats').hidden=!result;
   if(result){$('total').textContent=km(result.meters);$('time').textContent=result.provider==='demo'?'Demo distance':`≈ ${Math.ceil(result.seconds/60)} min`;$('saving').textContent=result.saved_meters>=0?`${km(result.saved_meters)} less`:`${km(-result.saved_meters)} extra`}
   setLabel($('overview'),result?'View your itinerary ↗':'Your day, at a glance ↗');
@@ -97,6 +98,7 @@ function detail(candidate,kind,index){
   if(kind==='candidate'){
     const confirm=el('button',candidate.match==='street'?'Place the exact building pin ↗':'Check & confirm the map pin ↗','dark-button');confirm.onclick=()=>openMap(candidate,'stop','detail');
     const start=el('button','Use as starting point','secondary');start.onclick=()=>openMap(candidate,'start','detail');actions.append(confirm,start);
+    if(candidate.pin_source){const source=el('a','View pin source ↗','inline-link');source.href=candidate.pin_source;source.target='_blank';source.rel='noopener noreferrer';actions.append(source)}
     const back=el('button','← Back to address search','inline-link');back.onclick=()=>openPanel('plan');actions.append(back);
   }else{
     const leg=index>=0?result?.legs[index]:null;
@@ -113,6 +115,8 @@ function showSearch(data){
   data.results.forEach(p=>{const b=el('button',undefined,'search-result');const copy=el('div');copy.append(el('small',p.match==='landmark'?'Landmark address verified':p.match==='street'?'Street only · pin required':'Mapped place'),el('strong',p.name));b.append(copy,el('span','↗'));b.onclick=()=>showCandidate(p);root.append(b)});
   if(!data.results.length){const b=el('button','Place this address on the map ↗','inline-link');b.onclick=()=>openMap({name:data.query,lat:startPlace.lat,lng:startPlace.lng,match:'street'},'stop','plan');root.append(b)}
 }
+setLabel($('office-directory'),'Find the main Abuja offices ↗');
+$('office-directory').onclick=()=>{if(busy)return;$('search').value='Abuja bank offices';$('search-form').requestSubmit($('search-form').querySelector('button'))};
 $('search-form').onsubmit=async e=>{
   e.preventDefault();if(!config||busy)return;const q=$('search').value.trim();if(q.length<2){error('Enter at least two characters.');return}
   const button=e.submitter;button.disabled=true;$('search-status').textContent='Looking up the address…';error('');
@@ -186,7 +190,7 @@ $('about').onclick=()=>$('about-dialog').showModal();$('close-about').onclick=()
     let stored;try{stored=JSON.parse(localStorage.getItem('axis-trip-v1'))}catch{}
     if(stored?.start&&Date.now()-stored.saved_at<86400000&&stored.provider===config.provider&&Array.isArray(stored.stops)&&stored.stops.length<=10){
       startPlace=clean(stored.start);stops=stored.stops.map(clean);const i=config.samples.findIndex(p=>same(p,startPlace));if(i>=0)$('start').value=i;else{const o=el('option',startPlace.name);o.value='custom';$('start').append(o);$('start').value='custom'}
-      $('strategy').value=stored.strategy==='nearest'?'nearest':'shortest';$('return').checked=!!stored.back;result=stored.result?.legs?.length?stored.result:null;
+      $('strategy').value=['nearest','input'].includes(stored.strategy)?stored.strategy:'shortest';$('return').checked=!!stored.back;result=stored.result?.legs?.length?stored.result:null;
     }
     render();
   }catch(e){$('footer-status').textContent='Connection unavailable';openPanel('plan');error(e.message)}

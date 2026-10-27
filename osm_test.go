@@ -144,3 +144,41 @@ func TestVendorAssetsAndSearchEndpoint(t *testing.T) {
 		t.Fatal(w.Code, w.Body.String())
 	}
 }
+
+func TestAbujaOfficeDirectory(t *testing.T) {
+	o := newOSM()
+	o.searchURL = "https://example.invalid"
+	for _, tc := range []struct{ query, name, match string }{
+		{"Jaiz Bank House, Plot 1073, J.S. Tarka Street, Area 3, Garki, Abuja, Federal Capital Territory, Nigeria", "Jaiz Bank Head Office", "landmark"},
+		{"premuim trust", "40b Gana Street", "street"},
+		{"NIRSAL", "1581", "landmark"},
+		{"NADF", "162 Independence", "landmark"},
+		{"NDAF", "NADF", "landmark"},
+		{"Sterling Bank Abuja", "1083", "landmark"},
+		{"Taj Bank", "Plot 72", "landmark"},
+		{"Bank of Agriculture", "Abuja Office", "landmark"},
+	} {
+		t.Run(tc.query, func(t *testing.T) {
+			r, e := o.SearchDetailed(context.Background(), tc.query)
+			if e != nil || len(r.Results) != 1 {
+				t.Fatal(r, e)
+			}
+			c := r.Results[0]
+			if !strings.Contains(c.Name, tc.name) || c.Match != tc.match || c.Source == "" || c.PinSource == "" {
+				t.Fatal(c)
+			}
+		})
+	}
+	for _, q := range []string{"Jaiz Bank Wuse", "TAJ Bank Gudu", "PremiumTrust Wuse 2", "Bank of Agriculture Kaduna", "Plot 10733 Tarka Street"} {
+		if r := officeSearch(q); len(r) > 0 {
+			t.Fatalf("silently substituted an office for %q: %v", q, r)
+		}
+	}
+}
+
+func TestBuildingNameRemovedFromStreetFallback(t *testing.T) {
+	q := streetQuery("Some Bank House, Plot 9999, J.S. Tarka Street, Area 3, Garki, Abuja, Federal Capital Territory, Nigeria")
+	if strings.Contains(q, "Bank") || strings.Contains(q, "9999") || strings.Contains(q, "Nigeria") || !strings.HasPrefix(q, "J S Tarka Street") {
+		t.Fatal(q)
+	}
+}
