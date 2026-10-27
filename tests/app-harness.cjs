@@ -24,6 +24,6 @@ async function app(reverse,search=async()=>({ok:true,json:async()=>({query:"",re
  });
  vm.runInContext(fs.readFileSync(require.resolve('../web/location.js'),'utf8'),context);
  vm.runInContext(fs.readFileSync(require.resolve('../web/app.js'),'utf8'),context);await tick();
- return {$,context,storage,captures:()=>captures,run:(q)=>vm.runInContext('runPlaceSearch('+JSON.stringify(q)+')',context),start:()=>JSON.parse(vm.runInContext('JSON.stringify(startPlace)',context)),capture:()=>{$('locate').onclick();return {success,failure,options}}};
+ return {$,context,storage,captures:()=>captures,currentCapture:()=>({success,failure,options}),run:(q)=>vm.runInContext('runPlaceSearch('+JSON.stringify(q)+')',context),start:()=>JSON.parse(vm.runInContext('JSON.stringify(startPlace)',context)),capture:()=>{$('locate').onclick();return {success,failure,options}}};
 }
 module.exports={app,tick};

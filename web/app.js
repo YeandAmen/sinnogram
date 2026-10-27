@@ -241,7 +241,7 @@ $('locate').onclick=()=>{
   if(!navigator.geolocation){$('location-status').textContent='This browser does not support location capture. Choose a starting pin on the map.';return}
   const request=++locationRequest,b=$('locate');locating=true;b.disabled=true;setLabel(b,'◎ Capturing location…');$('optimize').disabled=true;
   const finish=()=>{locating=false;b.disabled=busy;$('optimize').disabled=busy||!startPlace;setLabel(b,startSource==='gps'?'◎ Update my current location':'◎ Use my current location')};capturedFix=null;$('review-location').hidden=true;$('location-status').textContent='Capturing a fresh device location…';
-  navigator.geolocation.getCurrentPosition(async pos=>{
+  const attempt=(retry=false)=>navigator.geolocation.getCurrentPosition(async pos=>{
     if(request!==locationRequest){finish();return}
     let fix;try{fix=sinnogramLocation.readFix(pos)}catch(e){$('location-status').textContent=e.message;finish();return}
     if(fix.needsConfirmation){
@@ -259,7 +259,15 @@ $('locate').onclick=()=>{
       $('location-status').textContent=`${label.name} · captured at ${sinnogramLocation.captureTime(fix)} · ${sinnogramLocation.coordinates(fix)} · accuracy about ${Math.round(fix.accuracy)} m. Routing uses the captured coordinates; the street name is approximate.`;
     }catch(e){if(locationRequest===currentRequest)$('location-status').textContent=`Captured at ${sinnogramLocation.captureTime(fix)} · ${sinnogramLocation.coordinates(fix)} · accuracy about ${Math.round(fix.accuracy)} m. Street-name lookup unavailable; your captured coordinates are set.`}
     finally{finish()}
-  },err=>{if(request===locationRequest)$('location-status').textContent=sinnogramLocation.errorMessage(err);finish()},sinnogramLocation.options);
+  },err=>{
+    if(request!==locationRequest){finish();return}
+    if(!retry&&(err.code===2||err.code===3)){
+      $('location-status').textContent='The precision request did not get a location. Trying a fresh standard-accuracy request…';
+      setLabel(b,'◎ Retrying location…');attempt(true);return;
+    }
+    $('location-status').textContent=sinnogramLocation.errorMessage(err);finish();
+  },retry?sinnogramLocation.retryOptions:sinnogramLocation.options);
+  attempt();
 };
 $('strategy').onchange=invalidate;$('return').onchange=invalidate;
 $('example').onclick=()=>{if(!config)return;setStart(config.samples[0]);stops=[config.samples[3],config.samples[2],config.samples[4],config.samples[1]].map(clean);invalidate()};
