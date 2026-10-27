@@ -28,7 +28,7 @@ func TestOSMSearchAndCache(t *testing.T) {
 	o.searchURL = srv.URL
 	o.client = srv.Client()
 	for i := 0; i < 2; i++ {
-		places, e := o.Search(context.Background(), "Jabi Lake Mall")
+		places, e := o.searchRaw(context.Background(), "Jabi Lake Mall")
 		if e != nil || len(places) != 1 || places[0].Lng != 7.4257 {
 			t.Fatalf("places=%v err=%v", places, e)
 		}
@@ -180,5 +180,19 @@ func TestBuildingNameRemovedFromStreetFallback(t *testing.T) {
 	q := streetQuery("Some Bank House, Plot 9999, J.S. Tarka Street, Area 3, Garki, Abuja, Federal Capital Territory, Nigeria")
 	if strings.Contains(q, "Bank") || strings.Contains(q, "9999") || strings.Contains(q, "Nigeria") || !strings.HasPrefix(q, "J S Tarka Street") {
 		t.Fatal(q)
+	}
+}
+
+func TestExplicitLiveLookupBypassesCoordinateFreeLead(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `[{"display_name":"Agency test building, Abuja","lat":"9.04","lon":"7.49","category":"office"}]`)
+	}))
+	defer srv.Close()
+	o := newOSM()
+	o.searchURL = srv.URL
+	o.client = srv.Client()
+	r, e := o.searchLiveDetailed(context.Background(), "NITDA")
+	if e != nil || len(r.Results) != 1 || r.Results[0].Unlocated || r.Results[0].Lat != 9.04 {
+		t.Fatal(r, e)
 	}
 }

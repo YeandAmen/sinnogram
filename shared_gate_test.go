@@ -81,7 +81,7 @@ func TestPublicProviderFailsClosedWithoutSharedGate(t *testing.T) {
 	o := newOSM()
 	o.searchURL = srv.URL
 	o.client = srv.Client()
-	if _, e := o.Search(context.Background(), "Jabi"); e == nil {
+	if _, e := o.searchRaw(context.Background(), "Jabi"); e == nil {
 		t.Fatal("expected missing coordinator error")
 	}
 	if upstream {

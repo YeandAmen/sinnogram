@@ -101,6 +101,11 @@ func (o *osm) fetch(ctx context.Context, address string, out any) error {
 
 type Candidate struct {
 	Place
+	ID          string `json:"id,omitempty"`
+	Category    string `json:"category,omitempty"`
+	UpdatedAt   string `json:"updated_at,omitempty"`
+	License     string `json:"license,omitempty"`
+	Unlocated   bool   `json:"unlocated,omitempty"`
 	Match       string `json:"match"`
 	Description string `json:"description"`
 	Source      string `json:"source,omitempty"`
@@ -207,6 +212,40 @@ func (o *osm) SearchDetailed(ctx context.Context, q string) (SearchResponse, err
 		result.Message = "Found the published Abuja office address. Check the pin details before adding."
 		return result, nil
 	}
+	if rows := catalog.Search(q); len(rows) > 0 {
+		result.Results = rows
+		result.Message = "Matches from the Abuja location index. Address-only leads need a mapped pin; mapped places still need an entrance check."
+		return result, nil
+	}
+	if fallback := streetQuery(q); fallback != "" && !strings.EqualFold(fallback, q) {
+		rows := catalog.Search(fallback)
+		if len(rows) == 0 {
+			// A street may have no suburb tags in the snapshot. Offer only named
+			// roads and explicitly leave both district and building unconfirmed.
+			for _, r := range catalog.Search(strings.Split(fallback, ",")[0]) {
+				if r.Match == "street" {
+					rows = append(rows, r)
+				}
+			}
+		}
+		if len(rows) > 0 {
+			for i := range rows {
+				rows[i].Match = "street"
+				rows[i].Description = "Street match within greater Abuja. The district and plot number are not verified. Check the district and move the pin to the exact building before adding."
+			}
+			result.Results = rows
+			result.Message = "The plot number is not verified. Found street candidates—check the district and exact building pin."
+			return result, nil
+		}
+	}
+	return o.searchLiveDetailed(ctx, q)
+}
+
+// An explicit lookup can resolve a seed lead against the live provider rather
+// than redisplaying the same coordinate-free directory record.
+func (o *osm) searchLiveDetailed(ctx context.Context, q string) (SearchResponse, error) {
+	q = normalizeAddress(q)
+	result := SearchResponse{Query: q, Results: []Candidate{}}
 	rows, e := o.searchRaw(ctx, q)
 	if e != nil {
 		return result, e
@@ -239,6 +278,9 @@ func (o *osm) Search(ctx context.Context, q string) ([]Place, error) {
 	r, e := o.SearchDetailed(ctx, q)
 	out := []Place{}
 	for _, v := range r.Results {
+		if v.Unlocated {
+			continue
+		}
 		out = append(out, v.Place)
 	}
 	return out, e

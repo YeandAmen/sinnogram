@@ -35,3 +35,4 @@
  #overview{max-width:130px}.footer-link .ui-icon{width:10px;height:10px;min-width:10px}
 }
 @media(max-width:370px){.wordmark{font-size:15px;letter-spacing:.2px}.wordmark .brand-symbol{display:none}nav{gap:12px}.header{gap:9px}#footer-status{display:none}}
+.location-note{margin:4px 0 8px;line-height:1.5}#location-status,#coverage-status{overflow-wrap:anywhere;line-height:1.6}#coverage-status{margin:14px 0}#review-location{min-height:44px}#start{max-width:100%;text-overflow:ellipsis}#detail-actions a{overflow-wrap:anywhere}

@@ -41,6 +41,7 @@ Allowed public hosts come from `AXIS_PUBLIC_HOST`, `VERCEL_URL` and `VERCEL_PROJ
 | `SINNOGRAM_GATE_URL` | Private provider-lease object URL |
 | `BLOB_READ_WRITE_TOKEN` | Secret write credential for the connected Blob store |
 | `OSM_SEARCH_URL` | Alternative geocoding endpoint |
+| `OSM_REVERSE_URL` | Optional reverse-geocoder endpoint (default: sibling of `OSM_SEARCH_URL`) |
 | `OSRM_URL` | Alternative OSRM endpoint |
 | `GOOGLE_MAPS_API_KEY` | Optional Google provider, overriding OSM |
 
@@ -59,3 +60,29 @@ Trips remain in browser storage for up to 24 hours. Clearing the trip deletes th
 ## Third-party assets
 
 Leaflet 1.9.4 is bundled under BSD-2-Clause; its license is in `web/vendor/LEAFLET-LICENSE.txt`. OSM data attribution and policy links are visible in the app. Application icons, the scene, and repository artwork are generated from the project source.
+
+
+## Public location catalog and updates
+
+The deployed source includes a greater-Abuja OSM snapshot, normalized from a single Overpass export, and the supplied 39-row public-address seed CSV. The OSM bounding box is west 7.15, south 8.80, east 7.80, north 9.40. It is **not the complete FCT boundary or exhaustive address coverage**. See `data/ATTRIBUTION.md` for source and license details.
+
+Search checks the reviewed office directory, then this catalog, then explicit external searches. Name/acronym matching and at most one spelling edit help discovery. Numeric address components are never fuzzily corrected. Road coordinates are representative points and require a moved pin. A seed without coordinates stays an address-only lead: it is excluded from the legacy coordinate-only endpoint and must receive a confirmed map pin before routing. Clicking a map pin does not automatically publish it into the global catalog.
+
+To refresh explicitly (not on every visitor request):
+
+```sh
+python3 scripts/collect_abuja_osm.py /tmp/sinnogram-abuja-osm.json
+python3 scripts/import_locations.py /tmp/sinnogram-abuja-osm.json data/osm_locations.json
+go test -race ./...
+node --test tests/*.test.cjs
+```
+
+Review source differences before publishing a refresh. The importer retains stable OSM IDs and source URLs, excludes explicitly private/disused features, and deduplicates adjacent road segments and near-identical same-name points. It does not guess missing coordinates or merge headquarters with branches. Retain the raw snapshot separately if needed for audit; do not commit personal fixes or itineraries. A reviewed data update and deployment changes the index; submitting a search does not train an AI model or establish a new verified address.
+
+The current snapshot can be downloaded at `/api/location-data` with ODbL attribution; `/api/location-coverage` exposes record counts, timestamp, bounding box and license. A production-scale catalog can replace the embedded snapshot with a spatial database and licensed Overture/AGIS/NIPOST imports. Those sources have not been imported or represented as available here.
+
+## Device location
+
+The desktop/mobile browser requests a fresh high-accuracy location only after the user clicks the button (`maximumAge: 0`). Fresh fixes up to 150 m reported accuracy become the start; broader fixes require explicit map adjustment, leaving the previous start unchanged. The screen shows coordinates, reported accuracy and a map-review action. Hardware, browser permissions and OS Location Services determine the fix quality; a laptop may provide a broad area.
+
+A same-origin `POST /api/reverse` translates the coordinates to nearby street/area context through the existing shared provider lease. This is a nearby OSM feature label, **not proof of the user's building address**. The original device coordinates remain the route origin. Reverse lookup failure keeps the measured coordinates usable. GPS fixes are not added to the public catalog, lease object, or server logs by this application; routing/start details still use the existing 24-hour browser storage. The selected provider receives coordinates for lookup and routing. HTTPS (or localhost) is required.

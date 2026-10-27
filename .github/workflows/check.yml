@@ -16,3 +16,5 @@ jobs:
       - run: go vet ./...
       - run: node --check web/app.js
       - run: node --check web/scene.js
+      - run: node --check web/location.js
+      - run: node --test tests/*.test.cjs

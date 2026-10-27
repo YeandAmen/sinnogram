@@ -366,6 +366,73 @@ func handler(p provider) http.Handler {
 	mux.HandleFunc("GET /api/config", func(w http.ResponseWriter, r *http.Request) {
 		jsonOut(w, 200, map[string]any{"provider": p.Name(), "max_stops": 10, "samples": samples})
 	})
+	mux.HandleFunc("GET /api/location-data", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Disposition", `attachment; filename="sinnogram-osm-locations.json"`)
+		b, _ := catalogFiles.ReadFile("data/osm_locations.json")
+		w.Write(b)
+	})
+	mux.HandleFunc("GET /api/location-coverage", func(w http.ResponseWriter, r *http.Request) {
+		jsonOut(w, 200, map[string]any{"mapped_records": len(catalog.Snapshot.Records), "seed_leads": catalog.Seeds, "snapshot_at": catalog.Snapshot.SnapshotAt, "scope": catalog.Snapshot.Scope, "bbox": catalog.Snapshot.BBox, "license": catalog.Snapshot.License, "attribution": catalog.Snapshot.Attribution, "download": "/api/location-data"})
+	})
+	mux.HandleFunc("POST /api/reverse", func(w http.ResponseWriter, r *http.Request) {
+		if strings.Split(r.Header.Get("Content-Type"), ";")[0] != "application/json" {
+			fail(w, 415, "send application/json")
+			return
+		}
+		if origin := r.Header.Get("Origin"); origin != "" {
+			u, e := url.Parse(origin)
+			if e != nil || u.Host != r.Host {
+				fail(w, 403, "cross-origin requests are not allowed")
+				return
+			}
+		}
+		var point struct {
+			Lat *float64 `json:"lat"`
+			Lng *float64 `json:"lng"`
+		}
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&point); err != nil {
+			fail(w, 400, "send valid latitude and longitude")
+			return
+		}
+		if decoder.Decode(&struct{}{}) != io.EOF {
+			fail(w, 400, "send one location only")
+			return
+		}
+		if point.Lat == nil || point.Lng == nil {
+			fail(w, 400, "send valid latitude and longitude")
+			return
+		}
+		lat, lng := *point.Lat, *point.Lng
+		if math.IsNaN(lat) || math.IsNaN(lng) || math.IsInf(lat, 0) || math.IsInf(lng, 0) || lat < -90 || lat > 90 || lng < -180 || lng > 180 {
+			fail(w, 400, "send valid latitude and longitude")
+			return
+		}
+		reverse, ok := p.(interface {
+			Reverse(context.Context, float64, float64) (reverseResult, error)
+		})
+		if !ok {
+			fail(w, 503, "street-name lookup is unavailable in this mode; device coordinates are still usable")
+			return
+		}
+		select {
+		case gate <- struct{}{}:
+			defer func() { <-gate }()
+		default:
+			fail(w, 429, "please wait for the current location lookup")
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+		defer cancel()
+		label, err := reverse.Reverse(ctx, lat, lng)
+		if err != nil {
+			fail(w, 502, err.Error())
+			return
+		}
+		jsonOut(w, 200, label)
+	})
 	mux.HandleFunc("GET /api/search", func(w http.ResponseWriter, r *http.Request) {
 		q := strings.TrimSpace(r.URL.Query().Get("q"))
 		if len(q) < 2 || len(q) > 300 {
@@ -382,7 +449,13 @@ func handler(p provider) http.Handler {
 		ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
 		defer cancel()
 		if o, ok := p.(*osm); ok {
-			result, e := o.SearchDetailed(ctx, q)
+			var result SearchResponse
+			var e error
+			if r.URL.Query().Get("live") == "1" {
+				result, e = o.searchLiveDetailed(ctx, q)
+			} else {
+				result, e = o.SearchDetailed(ctx, q)
+			}
 			if e != nil {
 				fail(w, 502, e.Error())
 				return
@@ -468,7 +541,7 @@ func handler(p provider) http.Handler {
 		jsonOut(w, 200, buildResult(t, m, p.Name()))
 	})
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, "/vendor/") && r.URL.Path != "/scene.js" && r.URL.Path != "/" && r.URL.Path != "/app.js" && r.URL.Path != "/style.css" && r.URL.Path != "/manifest.webmanifest" && r.URL.Path != "/icon.svg" && r.URL.Path != "/icon-192.png" && r.URL.Path != "/icon-512.png" && r.URL.Path != "/apple-touch-icon.png" {
+		if !strings.HasPrefix(r.URL.Path, "/vendor/") && r.URL.Path != "/scene.js" && r.URL.Path != "/" && r.URL.Path != "/app.js" && r.URL.Path != "/location.js" && r.URL.Path != "/style.css" && r.URL.Path != "/manifest.webmanifest" && r.URL.Path != "/icon.svg" && r.URL.Path != "/icon-192.png" && r.URL.Path != "/icon-512.png" && r.URL.Path != "/apple-touch-icon.png" {
 			http.NotFound(w, r)
 			return
 		}
@@ -501,6 +574,7 @@ func handler(p provider) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("Permissions-Policy", "geolocation=(self)")
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://tile.openstreetmap.org; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'")
 		allowed := r.Host == "127.0.0.1:8080" || r.Host == "localhost:8080"
 		for _, key := range []string{"AXIS_PUBLIC_HOST", "VERCEL_URL", "VERCEL_PROJECT_PRODUCTION_URL"} {
