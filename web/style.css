@@ -177,3 +177,10 @@
 #plan-panel #review-location,#plan-panel #choose-start-map{padding:8px 0;margin:0;min-height:40px}
 #plan-panel .field-block{padding-bottom:12px;border-bottom:1px solid var(--line)}
 #globe-map .maplibregl-cooperative-gesture-screen{display:none!important}
+
+/* Direct entry, without instructional headings or example flows. */
+#plan-panel #search-form{margin-top:28px}
+.stop-entry-actions{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 0 16px;border-bottom:1px solid var(--line)}
+#plan-panel .stop-entry-actions .inline-link{font-size:12px;min-height:44px;padding:12px 0;white-space:nowrap}
+#plan-panel #locate{display:block;margin-top:8px}
+#plan-panel #choose-start-map,#plan-panel #review-location{display:block;margin-top:4px}

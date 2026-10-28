@@ -378,8 +378,6 @@ async function runPlaceSearch(query,live=false){
   }
 }
 setLabel($('search-submit'),'Find places ↗');
-setLabel($('office-directory'),'Find the main Abuja offices ↗');
-$('office-directory').onclick=()=>{$('search').value='Abuja bank offices';runPlaceSearch($('search').value)};
 $('search-form').onsubmit=e=>{e.preventDefault();runPlaceSearch($('search').value)};
 $('search').oninput=()=>{clearTimeout(searchTimer);const q=$('search').value.trim();const request=++searchRequest;if(searchController)searchController.abort();$('matches').replaceChildren();if(q.length<2){$('search-status').textContent='';return}$('search-status').textContent='Finding suggestions…';searchTimer=setTimeout(async()=>{try{const data=await api('/api/suggest?q='+encodeURIComponent(q));if(request===searchRequest&&$('search').value.trim()===q)showSearch(data)}catch{if(request===searchRequest)$('search-status').textContent='Use Find places to try a full search.'}},350)};
 $('search').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();$('search-form').requestSubmit($('search-submit'))}};
@@ -636,7 +634,6 @@ $('confirm-pin').onclick=()=>{
 $('map-back').onclick=()=>closeMap();$('exit-map').onclick=()=>closeMap();
 $('retry-map').onclick=()=>{if(tileMode==='direct')loadMapThroughSite();else mapTiles.redraw()};
 $('manual-map').onclick=()=>openMap({name:$('search').value.trim()||'My map pin',lat:mapAnchor().lat,lng:mapAnchor().lng,match:'street'},'stop','plan');
-$('pin-add').onclick=()=>{const parts=$('pin-coords').value.split(',').map(v=>v.trim()),name=$('pin-name').value.trim();const [lat,lng]=parts.map(Number);if(!name||parts.length!==2||parts.some(v=>!v)||!Number.isFinite(lat)||!Number.isFinite(lng)||Math.abs(lat)>90||Math.abs(lng)>180){error('Enter a name and valid latitude, longitude.');return}showCandidate({name,lat,lng,match:'manual',description:'Your pasted coordinates. Check the map pin before adding it.'})};
 $('start').onchange=()=>{const value=$('start').value;if(value==='custom')return;if(value===''){clearStart();return}setStart(config.samples[Number(value)])};
 function reviewCapturedLocation(){
   if(!capturedFix)return;
@@ -747,7 +744,6 @@ $('locate').onclick=()=>{
 };
 $('locate').disabled=false;
 $('strategy').onchange=invalidate;$('return').onchange=invalidate;
-$('example').onclick=()=>{if(!config)return;stopMinutes={};setStart(config.samples[0]);stops=[config.samples[3],config.samples[2],config.samples[4],config.samples[1]].map(clean);invalidate()};
 $('clear').onclick=()=>{stops=[];result=null;stopMinutes={};if(routeMode)closeMap(false);resetProgress();activePlace=null;try{localStorage.removeItem('axis-trip-v1')}catch{};$('matches').replaceChildren();$('search-status').textContent='Trip cleared.';render()};
 $('optimize').onclick=async()=>{
   if(!config||busy||locating)return;if(!startPlace){error('Capture your current location or choose a starting point first.');return}if(!stops.length){error('Add at least one destination first.');return}
@@ -759,7 +755,6 @@ $('download').onclick=()=>{if(!result)return;const text=['SINNOGRAM / YOUR DAY I
 $('begin').onclick=$('nav-plan').onclick=()=>{closeMap(false);openPanel('plan')};$('nav-explore').onclick=explore;$('nav-map').onclick=()=>result?showCityRoute():openMap();$('close-plan').onclick=$('close-detail').onclick=()=>result?showCityRoute():explore();
 $('overview').onclick=()=>result?showCityRoute():showTrip();
 $('route-continue').onclick=showTrip;$('route-fit').onclick=()=>{liveFollow=false;drawCityRoute(true);renderLiveLocation()};
-$('home-example').onclick=async()=>{const button=$('home-example');if(busy)return;button.disabled=true;button.textContent='Planning example…';try{$('example').onclick();await $('optimize').onclick()}finally{button.disabled=false;button.textContent='Try an example'}};
 
 if(typeof sinnogramScene!=='undefined')sinnogramScene.onSelect=p=>{const index=stops.findIndex(v=>same(v,p));if(index>=0||same(startPlace,p))showStop(p,index);else showCandidate({...p,match:'place',description:'An example district/location in Abuja. Confirm the exact entrance pin before adding it.'})};
 if(typeof sinnogramScene!=='undefined')sinnogramScene.onLocate=showLiveLocation;
@@ -786,11 +781,6 @@ $('about').onclick=()=>$('about-dialog').showModal();$('close-about').onclick=()
       save();
     }
     render();readSharedTrip();
-    api('/api/location-coverage').then(c=>{
-      const councils=c.area_councils?.filter(a=>a.mapped_records>0).length;
-      const node=$('coverage-status');node.replaceChildren(document.createTextNode(`${c.mapped_records.toLocaleString()} map records · ${c.seed_leads+(c.reviewed_address_leads||0)+(c.building_address_leads||0)} address leads. FCT index${councils?` · ${councils}/6 area councils represented`:''}; place and entrance coverage varies. © OpenStreetMap contributors; Overture Maps & source contributors · `));
-      const link=el('a','Data & attribution');link.href='/api/location-data';node.append(link);if(c.overture_records){const extra=el('a',' · Overture data');extra.href=c.overture_download;node.append(extra)}if(c.building_address_leads){const buildings=el('a',' · Building address data');buildings.href=c.buildings_download;node.append(buildings)}
-      if(c.boundary_download){const boundary=el('a',' · FCT boundary (GRID3 / geoBoundaries, CC BY 4.0)');boundary.href=c.boundary_download;node.append(boundary)}
-    }).catch(()=>{});
+
   }catch(e){$('footer-status').textContent='Connection unavailable';openPanel('plan');error(e.message)}
 })();
