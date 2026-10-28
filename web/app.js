@@ -2,7 +2,12 @@ const $ = id => document.getElementById(id);
 let config, startPlace, stops = [], result = null, busy = false, activePlace = null;
 let stopMinutes={},sharedDraft=null;
 let tripStep=0, tripStarted=false, tripComplete=false;
-let locationRequest=0, capturedFix=null, locating=false;
+let locationRequest=0, capturedFix=null, locating=false, captureRecovery=null;
+function clearCaptureRecovery(){
+  const pending=captureRecovery;captureRecovery=null;
+  if(!pending)return;clearTimeout(pending.timer);
+  if(pending.id!==null)navigator.geolocation.clearWatch(pending.id);
+}
 let startSource='none', startCapturedAt=null, startAccuracy=null;
 let searchRequest=0, searchController=null;
 let bulkRows=[],bulkLoading=false,bulkRequest=0,bulkPinIndex=-1;
@@ -60,7 +65,7 @@ function resetProgress(){tripStep=0;tripStarted=false;tripComplete=false}
 function invalidate(){result=null;if(routeMode)closeMap(false);resetProgress();error('');save();render();}
 function setStart(place,{source='manual',capturedAt=null,accuracy=null}={}) {
   if(busy)return;
-  locationRequest++;capturedFix=null;$('review-location').hidden=true;$('location-status').textContent='';
+  clearCaptureRecovery();locationRequest++;locating=false;$('locate').disabled=busy;capturedFix=null;$('review-location').hidden=true;$('location-status').textContent='';
   startSource=source;startCapturedAt=capturedAt;startAccuracy=accuracy;
   $('accept-approx').hidden=true;$('accept-approx-map').hidden=true;
   setLabel($('locate'),source==='gps'?'◎ Update my current location':'◎ Use my current location');
@@ -70,7 +75,7 @@ function setStart(place,{source='manual',capturedAt=null,accuracy=null}={}) {
   option.hidden=false;option.disabled=false;$('start').value=option.value;invalidate();
 }
 function clearStart(){
-  locationRequest++;startPlace=null;startSource='none';startCapturedAt=null;capturedFix=null;activePlace=null;
+  clearCaptureRecovery();locationRequest++;locating=false;$('locate').disabled=busy;startPlace=null;startSource='none';startCapturedAt=null;capturedFix=null;activePlace=null;
   startAccuracy=null;$('accept-approx').hidden=true;$('accept-approx-map').hidden=true;
   for(const option of $('start').options){if(option.value==='custom'){option.hidden=true;option.disabled=true}}
   $('start').value='';$('review-location').hidden=true;$('location-status').textContent='Choose a starting place or capture a fresh device location.';
@@ -147,7 +152,7 @@ $('nav-locate').onclick=()=>{
 $('live-recenter').onclick=showLiveLocation;
 $('live-follow').onclick=()=>{if(pendingPin)return;liveFollow=!liveFollow;if(liveFollow)showLiveLocation();else renderLiveLocation()};
 function cancelPendingCapture(){
-  locationRequest++;locating=false;$('locate').disabled=busy;$('optimize').disabled=busy||!startPlace;
+  clearCaptureRecovery();locationRequest++;locating=false;$('locate').disabled=busy;$('optimize').disabled=busy||!startPlace;
   setLabel($('locate'),startSource==='gps'?'◎ Update my current location':'◎ Use my current location');
 }
 $('live-stop').onclick=()=>{
@@ -647,10 +652,34 @@ function captureLocation(){
   if(!navigator.geolocation){$('location-status').textContent='This browser does not support location capture. Choose a starting pin on the map.';return}
   const request=++locationRequest,b=$('locate');locating=true;b.disabled=true;setLabel(b,'◎ Capturing location…');$('optimize').disabled=true;
   const finish=()=>{locating=false;b.disabled=busy;$('optimize').disabled=busy||!startPlace;setLabel(b,startSource==='gps'?'◎ Update my current location':'◎ Use my current location')};capturedFix=null;$('review-location').hidden=true;$('location-status').textContent='Capturing a fresh device location…';
-  const receive=async pos=>{
+  const waitForFresh=()=>{
+    if(captureRecovery)return;
+    $('location-status').textContent='Your device returned an older position. Waiting for a fresh location…';
+    setLabel(b,'◎ Refreshing location…');
+    const pending={id:null,timer:null};captureRecovery=pending;
+    pending.timer=setTimeout(()=>{
+      if(request!==locationRequest||captureRecovery!==pending)return;
+      clearCaptureRecovery();
+      $('location-status').textContent='Your device has not supplied a fresh position. Try again, or choose your starting point on the map.';finish();
+    },20000);pending.timer?.unref?.();
+    const id=navigator.geolocation.watchPosition(pos=>{
+      if(captureRecovery===pending)receive(pos,true,true).catch(locationCaptureFailed);
+    },err=>{
+      if(request!==locationRequest||captureRecovery!==pending)return;
+      if(err.code===1){clearCaptureRecovery();liveTracker.deny();$('location-status').textContent=sinnogramLocation.errorMessage(err);finish()}
+    },sinnogramLocation.options);
+    if(captureRecovery===pending)pending.id=id;else navigator.geolocation.clearWatch(id);
+  };
+  const receive=async (pos,retry=false,watching=false)=>{
     if(request!==locationRequest)return;
-    let fix;try{fix=sinnogramLocation.readFix(pos)}catch(e){$('location-status').textContent=e.message;finish();return}
-    enableLiveLocation(pos);
+    let fix;try{fix=sinnogramLocation.readFix(pos)}catch(e){
+      if(watching)return;
+      if(retry)waitForFresh();else{
+        $('location-status').textContent='Your device returned an older or invalid position. Requesting a fresh location…';
+        setLabel(b,'◎ Refreshing location…');attempt(true);
+      }return;
+    }
+    clearCaptureRecovery();enableLiveLocation(pos);
     if(fix.needsConfirmation){
       capturedFix=fix;$('review-location').hidden=false;$('accept-approx').hidden=false;
       setLabel($('accept-approx'),`Use approximate location · about ${Math.round(fix.accuracy)} m accuracy`);
@@ -676,7 +705,7 @@ function captureLocation(){
     }catch(e){if(locationRequest===currentRequest)$('location-status').textContent=`Captured at ${sinnogramLocation.captureTime(fix)} · ${sinnogramLocation.coordinates(fix)} · accuracy about ${Math.round(fix.accuracy)} m. Street-name lookup unavailable; your captured coordinates are set.`}
     finally{clearTimeout(lookupTimer)}
   };
-  const attempt=(retry=false)=>navigator.geolocation.getCurrentPosition(pos=>receive(pos).catch(locationCaptureFailed),err=>{
+  const attempt=(retry=false)=>navigator.geolocation.getCurrentPosition(pos=>receive(pos,retry).catch(locationCaptureFailed),err=>{
     if(request!==locationRequest)return;
     if(!retry&&(err.code===2||err.code===3)){
       $('location-status').textContent='The precision request did not get a location. Trying a fresh standard-accuracy request…';
@@ -688,7 +717,7 @@ function captureLocation(){
   attempt();
 }
 function locationCaptureFailed(){
-  locationRequest++;locating=false;
+  clearCaptureRecovery();locationRequest++;locating=false;
   $('locate').disabled=busy;$('optimize').disabled=busy||!startPlace;
   setLabel($('locate'),'◎ Try location again');
   $('location-status').textContent='The location controls hit an unexpected error. Reload this page and try again, or choose a starting pin on the map.';
