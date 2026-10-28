@@ -1,9 +1,10 @@
 const $ = id => document.getElementById(id);
 let config, startPlace, stops = [], result = null, busy = false, activePlace = null;
 let locationRequest=0, capturedFix=null, locating=false;
-let startSource='none', startCapturedAt=null;
+let startSource='none', startCapturedAt=null, startAccuracy=null;
 let searchRequest=0, searchController=null;
 let map, mapPins, editMarker, pendingPin = null, pinMoved = false, mapOrigin = 'plan';
+let mapTiles, tileMode='direct', tileLoaded=0, tileFailed=0, tileTimer;
 const km = value => `${(value / 1000).toFixed(1)} km`;
 const number = value => String(value).padStart(2, '0');
 const clean = p => ({name:p.name,lat:Number(p.lat),lng:Number(p.lng)});
@@ -39,10 +40,11 @@ function save() {
   try{localStorage.setItem('axis-trip-v1',JSON.stringify({saved_at:Date.now(),provider:config.provider,start:startSource==='gps'?null:startPlace,start_source:startSource,stops,result:!startPlace||startSource==='gps'||config.provider==='google'?null:result,strategy:$('strategy').value,back:$('return').checked}))}catch{$('location-status').textContent='Storage is unavailable. Save your itinerary before opening Maps.'}
 }
 function invalidate(){result=null;error('');save();render();}
-function setStart(place,{source='manual',capturedAt=null}={}) {
+function setStart(place,{source='manual',capturedAt=null,accuracy=null}={}) {
   if(busy)return;
   locationRequest++;capturedFix=null;$('review-location').hidden=true;$('location-status').textContent='';
-  startSource=source;startCapturedAt=capturedAt;
+  startSource=source;startCapturedAt=capturedAt;startAccuracy=accuracy;
+  $('accept-approx').hidden=true;$('accept-approx-map').hidden=true;
   setLabel($('locate'),source==='gps'?'◎ Update my current location':'◎ Use my current location');
   startPlace=clean(place);stops=stops.filter(p=>!sameVisit(p,startPlace));
   let option=[...$('start').options].find(o=>o.textContent===startPlace.name);
@@ -51,6 +53,7 @@ function setStart(place,{source='manual',capturedAt=null}={}) {
 }
 function clearStart(){
   locationRequest++;startPlace=null;startSource='none';startCapturedAt=null;capturedFix=null;activePlace=null;
+  startAccuracy=null;$('accept-approx').hidden=true;$('accept-approx-map').hidden=true;
   for(const option of $('start').options){if(option.value==='custom'){option.hidden=true;option.disabled=true}}
   $('start').value='';$('review-location').hidden=true;
   setLabel($('locate'),'◎ Use my current location');invalidate();
@@ -180,11 +183,31 @@ setLabel($('office-directory'),'Find the main Abuja offices ↗');
 $('office-directory').onclick=()=>{$('search').value='Abuja bank offices';runPlaceSearch($('search').value)};
 $('search-form').onsubmit=e=>{e.preventDefault();runPlaceSearch($('search').value)};
 $('search').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();$('search-form').requestSubmit($('search-submit'))}};
+function updatePinAvailability(){
+  $('confirm-pin').disabled=!!pendingPin&&pendingPin.action!=='inspect'&&(tileLoaded===0||(needsPin(pendingPin.place)&&!pinMoved));
+}
+function loadMapThroughSite(){
+  tileMode='relay';tileLoaded=0;tileFailed=0;updatePinAvailability();
+  $('map-load-status').textContent='Loading streets through Sinnogram…';
+  mapTiles.setUrl('/api/tiles/{z}/{x}/{y}.png');
+}
+function tileLoadingFinished(){
+  clearTimeout(tileTimer);
+  if(tileLoaded===0||tileFailed>0){
+    if(tileMode==='direct'){loadMapThroughSite();return}
+    $('map-load-status').textContent='Street images could not fully load. Reload the map, or go back and choose a starting place. An approximate device location can also be used if you accept its uncertainty.';
+  }else $('map-load-status').textContent='';
+  updatePinAvailability();
+}
 function initMap(){
   if(map)return;
   map=L.map('street-map',{zoomControl:true,attributionControl:true}).setView([9.075,7.46],13);
   map.attributionControl.setPrefix(false);
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a>',referrerPolicy:'strict-origin-when-cross-origin'}).addTo(map);
+  mapTiles=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a>',referrerPolicy:'strict-origin-when-cross-origin'});
+  mapTiles.on('loading',()=>{tileLoaded=0;tileFailed=0;clearTimeout(tileTimer);$('map-load-status').textContent='Loading street map…';updatePinAvailability();tileTimer=setTimeout(tileLoadingFinished,15000)});
+  mapTiles.on('tileload',()=>{tileLoaded++;updatePinAvailability()});
+  mapTiles.on('tileerror',()=>{tileFailed++});
+  mapTiles.on('load',tileLoadingFinished);mapTiles.addTo(map);
   mapPins=L.layerGroup().addTo(map);
   map.on('click',e=>{
     if(!pendingPin){pendingPin={place:{name:$('search').value.trim()||'My map pin',lat:e.latlng.lat,lng:e.latlng.lng,match:'manual'},action:'stop'};mapOrigin='plan';$('map-confirm').hidden=false;}
@@ -195,13 +218,14 @@ function setMapPin(latlng,moved=false){
   if(!editMarker){editMarker=L.marker(latlng,{draggable:true,icon:L.divIcon({className:'',html:'<div class="map-pin"></div>',iconSize:[24,30],iconAnchor:[12,27]})}).addTo(map);editMarker.on('dragend',()=>setMapPin(editMarker.getLatLng(),true))}else editMarker.setLatLng(latlng);
   if(moved)pinMoved=true;
   $('pin-position').textContent=`${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}${needsPin(pendingPin?.place)&&!pinMoved?' · Move to the exact building':''}`;
-  $('confirm-pin').disabled=!!pendingPin&&needsPin(pendingPin.place)&&!pinMoved;
+  updatePinAvailability();
   if(pendingPin)pendingPin.coords={lat:latlng.lat,lng:latlng.lng};
 }
 function openMap(place=null,action='inspect',origin='explore'){
   const unlocated=!!place?.unlocated;
   if(unlocated)place={...place,lat:mapAnchor().lat,lng:mapAnchor().lng,match:'street',unlocated:false};
   openPanel(null);$('street-map').hidden=false;$('map-instruction').hidden=false;$('stage-heading').hidden=true;$('scene-hint').hidden=true;$('view-controls').hidden=true;
+  $('accept-approx-map').hidden=true;
   $('nav-map').classList.add('active');$('nav-explore').classList.remove('active');mapOrigin=origin;pendingPin=place?{place,action}:null;pinMoved=false;
   $('map-confirm').hidden=!place;setLabel($('confirm-pin'),action==='start'?'Set starting point ↗':action==='inspect'?'Back to place ↗':'Add confirmed stop ↗');
   initMap();map.invalidateSize();mapPins.clearLayers();if(editMarker){map.removeLayer(editMarker);editMarker=null;}
@@ -215,12 +239,13 @@ function closeMap(restore=true){
 }
 $('confirm-pin').onclick=()=>{
   if(!pendingPin)return;const {place,action,coords}=pendingPin;if(action==='inspect'){closeMap();return}
-  if(needsPin(place)&&!pinMoved)return;
+  if(tileLoaded===0||(needsPin(place)&&!pinMoved))return;
   const confirmed={name:place.name,lat:coords.lat,lng:coords.lng};
   if(action==='start'){const fromGPS=pendingPin.startSource==='gps';if(fromGPS&&pinMoved)confirmed.name=`Chosen starting pin · ${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}`;setStart(confirmed,{source:fromGPS?'gps':'manual',capturedAt:pendingPin.capturedAt||null});$('location-status').textContent=fromGPS?'Starting pin confirmed for this visit. Capture your location again after moving.':'Starting point selected on the map.'}else if(!addStop(confirmed))return;
   pendingPin=null;closeMap(false);openPanel('plan');$('matches').replaceChildren();$('search-status').classList.remove('search-failure');$('search-status').textContent='Pin confirmed. Location added to your day.';$('search').value='';
 };
 $('map-back').onclick=()=>closeMap();$('exit-map').onclick=()=>closeMap();
+$('retry-map').onclick=()=>{if(tileMode==='direct')loadMapThroughSite();else mapTiles.redraw()};
 $('manual-map').onclick=()=>openMap({name:$('search').value.trim()||'My map pin',lat:mapAnchor().lat,lng:mapAnchor().lng,match:'street'},'stop','plan');
 $('pin-add').onclick=()=>{const parts=$('pin-coords').value.split(',').map(v=>v.trim()),name=$('pin-name').value.trim();const [lat,lng]=parts.map(Number);if(!name||parts.length!==2||parts.some(v=>!v)||!Number.isFinite(lat)||!Number.isFinite(lng)||Math.abs(lat)>90||Math.abs(lng)>180){error('Enter a name and valid latitude, longitude.');return}showCandidate({name,lat,lng,match:'manual',description:'Your pasted coordinates. Check the map pin before adding it.'})};
 $('start').onchange=()=>{const value=$('start').value;if(value==='custom')return;if(value===''){clearStart();return}setStart(config.samples[Number(value)])};
@@ -229,11 +254,24 @@ function reviewCapturedLocation(){
   const f=capturedFix;
   openMap({name:`Device location · ${sinnogramLocation.coordinates(f)}`,lat:f.lat,lng:f.lng,match:f.needsConfirmation?'street':'place'},'start','plan');
   pendingPin.startSource='gps';pendingPin.capturedAt=f.capturedAt;
+  $('accept-approx-map').hidden=!f.needsConfirmation||!!startPlace;
+  setLabel($('accept-approx-map'),`Use approximate location · about ${Math.round(f.accuracy)} m accuracy`);
   L.circle([f.lat,f.lng],{radius:f.accuracy,weight:1,color:'#6f7565',fillOpacity:.08}).addTo(mapPins);
   map.fitBounds(L.latLng(f.lat,f.lng).toBounds(Math.max(150,f.accuracy*3)),{maxZoom:18,padding:[30,70]});
   $('pin-position').textContent=`Device accuracy about ${Math.round(f.accuracy)} m · ${f.needsConfirmation?'Move the pin to your actual starting point':'Check the captured point'}`;
 }
 $('review-location').onclick=reviewCapturedLocation;
+$('choose-start-map').onclick=()=>openMap({name:'Chosen starting point',lat:mapAnchor().lat,lng:mapAnchor().lng,match:'street'},'start','plan');
+function acceptApproximateLocation(){
+  if(busy||!capturedFix?.needsConfirmation)return;
+  const fix=capturedFix;
+  try{sinnogramLocation.readFix({timestamp:fix.capturedAt,coords:{latitude:fix.lat,longitude:fix.lng,accuracy:fix.accuracy}})}catch(e){$('location-status').textContent='That captured location is old. Tap Use my current location to capture it again.';closeMap(false);openPanel('plan');return}
+  setStart({name:`Approximate starting point · ${sinnogramLocation.coordinates(fix)}`,lat:fix.lat,lng:fix.lng},{source:'gps',capturedAt:fix.capturedAt,accuracy:fix.accuracy});
+  capturedFix=fix;$('review-location').hidden=false;
+  $('location-status').textContent=`Approximate starting point selected · device-reported accuracy about ${Math.round(fix.accuracy)} m. Trip distances may differ from your actual starting point. You can adjust it on the map or capture again.`;
+  closeMap(false);openPanel('plan');
+}
+$('accept-approx').onclick=$('accept-approx-map').onclick=acceptApproximateLocation;
 function captureLocation(){
   if(busy||locating)return;
   if(!config){$('location-status').textContent='Still connecting. Try location capture again in a moment.';return}
@@ -246,7 +284,9 @@ function captureLocation(){
     if(request!==locationRequest){finish();return}
     let fix;try{fix=sinnogramLocation.readFix(pos)}catch(e){$('location-status').textContent=e.message;finish();return}
     if(fix.needsConfirmation){
-      capturedFix=fix;$('review-location').hidden=false;$('location-status').textContent=`Your device reports a broad area (about ${Math.round(fix.accuracy)} m accuracy). Check the map and place your actual starting pin before routing.`;finish();return;
+      capturedFix=fix;$('review-location').hidden=false;$('accept-approx').hidden=false;
+      setLabel($('accept-approx'),`Use approximate location · about ${Math.round(fix.accuracy)} m accuracy`);
+      $('location-status').textContent=`Approximate location captured · about ${Math.round(fix.accuracy)} m accuracy. Choose to use this approximate point or adjust it on the map before routing.`;finish();return;
     }
     const coordinateName=`GPS · ${sinnogramLocation.coordinates(fix)}`;
     setStart({name:coordinateName,lat:fix.lat,lng:fix.lng},{source:'gps',capturedAt:fix.capturedAt});capturedFix=fix;$('review-location').hidden=false;
@@ -292,7 +332,7 @@ $('clear').onclick=()=>{stops=[];result=null;activePlace=null;try{localStorage.r
 $('optimize').onclick=async()=>{
   if(!config||busy||locating)return;if(!startPlace){error('Capture your current location or choose a starting point first.');return}if(!stops.length){error('Add at least one destination first.');return}
   busy=true;error('');document.querySelectorAll('#plan-panel button,#plan-panel input,#plan-panel select,#plan-panel textarea').forEach(e=>e.disabled=true);$('optimize').textContent='Finding your best order…';
-  try{result=await api('/api/optimize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({start:startPlace,stops,round_trip:$('return').checked,strategy:$('strategy').value})});save();render();openPanel(null);showStop(result.legs[0].to,0);$('footer-status').textContent='ROAD ESTIMATES · NO LIVE TRAFFIC'}catch(e){error(e.message)}finally{busy=false;document.querySelectorAll('#plan-panel button,#plan-panel input,#plan-panel select,#plan-panel textarea').forEach(e=>e.disabled=false);$('optimize').replaceChildren(document.createTextNode('Organize my trip '),el('span','↗'))}
+  try{result=await api('/api/optimize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({start:startPlace,stops,round_trip:$('return').checked,strategy:$('strategy').value})});if(startAccuracy>150)result.notice=`Approximate starting point: device-reported accuracy about ${Math.round(startAccuracy)} m. Distances and visit order depend on this approximate point. `+result.notice;save();render();openPanel(null);showStop(result.legs[0].to,0);$('footer-status').textContent='ROAD ESTIMATES · NO LIVE TRAFFIC'}catch(e){error(e.message)}finally{busy=false;document.querySelectorAll('#plan-panel button,#plan-panel input,#plan-panel select,#plan-panel textarea').forEach(e=>e.disabled=false);$('optimize').replaceChildren(document.createTextNode('Organize my trip '),el('span','↗'))}
 };
 $('download').onclick=()=>{if(!result)return;const text=['SINNOGRAM / YOUR DAY IN ABUJA',`Start: ${startPlace.name}`,`Total: ${km(result.meters)} · about ${Math.ceil(result.seconds/60)} minutes driving`,result.notice,'',...result.legs.map((l,i)=>`${i+1}. ${l.to.name}\nFrom ${l.from.name}\n${km(l.meters)}\nGoogle: ${l.google}\nApple: ${l.apple}`)].join('\n');const url=URL.createObjectURL(new Blob([text],{type:'text/plain'}));const a=el('a');a.href=url;a.download='sinnogram-itinerary.txt';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 $('begin').onclick=$('nav-plan').onclick=()=>{closeMap(false);openPanel('plan')};$('nav-explore').onclick=explore;$('nav-map').onclick=()=>openMap();$('close-plan').onclick=$('close-detail').onclick=explore;

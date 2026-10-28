@@ -39,3 +39,5 @@
 .search-line textarea{flex:1;min-width:0;width:0}.search-submit{display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:0 0 auto;min-height:48px;padding:12px 8px 12px 14px;font-size:12px;white-space:nowrap}.search-submit .ui-icon{width:16px;height:16px}.search-submit:disabled{opacity:.65}#search-form{scroll-margin-top:12px}#search-feedback{margin-top:12px}#search-status:not(:empty){padding:10px 0;line-height:1.6}#search-status.search-failure{color:var(--error)}.route-method{margin:10px 0 14px;line-height:1.6}
 
 .location-status{font-size:13px;line-height:1.6;color:var(--ink);border-left:2px solid var(--ink);padding:8px 12px;margin:6px 0 10px;overflow-wrap:anywhere}#locate{min-height:48px;touch-action:manipulation}
+
+.map-instruction #retry-map{position:static;display:block;font-size:11px;min-height:36px;text-decoration:underline;text-underline-offset:3px;margin-top:4px}#map-load-status{font-size:11px;line-height:1.4;max-width:280px;margin-top:6px;color:var(--error)}#map-load-status:empty{display:none}#accept-approx,#accept-approx-map{display:block;font-size:12px;text-decoration:underline;min-height:44px}#review-location{display:block}

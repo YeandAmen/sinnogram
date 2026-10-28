@@ -362,6 +362,7 @@ func fail(w http.ResponseWriter, status int, msg string) {
 }
 func handler(p provider) http.Handler {
 	mux := http.NewServeMux()
+	mux.Handle("GET /api/tiles/", newTileRelay())
 	gate := make(chan struct{}, 2)
 	mux.HandleFunc("GET /api/config", func(w http.ResponseWriter, r *http.Request) {
 		jsonOut(w, 200, map[string]any{"provider": p.Name(), "max_stops": 10, "samples": samples})

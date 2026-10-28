@@ -127,3 +127,18 @@ test('an unexpected error during success handling never leaves the message blank
  await a.capture().success(fix(10));
  assert.match(a.$('location-status').textContent,/unexpected error/);assert.equal(a.$('locate').disabled,false);
 });
+test('912m location can be explicitly accepted with uncertainty and is never persisted',async()=>{
+ const a=await app(reverseLabel);await a.capture().success(fix(912));
+ assert.equal(a.start(),null);assert.equal(a.$('accept-approx').hidden,false);
+ assert.match(a.$('location-status').textContent,/Approximate location captured/);
+ a.$('accept-approx').onclick();assert.match(a.start().name,/Approximate starting point/);
+ assert.equal(a.start().lat,9.0811598);assert.equal(vm.runInContext('startAccuracy',a.context),912);
+ assert.equal(a.$('optimize').disabled,false);assert.match(a.$('location-status').textContent,/912 m/);
+ assert.equal(JSON.parse(a.storage.get('axis-trip-v1')).start,null);
+ a.capture();assert.equal(a.start(),null);assert.equal(a.$('accept-approx').hidden,true);
+});
+test('a stale approximate fix cannot be accepted later',async()=>{
+ const a=await app(reverseLabel);await a.capture().success(fix(912));
+ vm.runInContext('capturedFix.capturedAt=Date.now()-120000',a.context);
+ a.$('accept-approx').onclick();assert.equal(a.start(),null);assert.match(a.$('location-status').textContent,/old/);
+});
