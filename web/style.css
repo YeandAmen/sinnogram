@@ -131,7 +131,6 @@
 @media(max-width:370px){.header{padding-left:12px;padding-right:12px;gap:8px}nav{gap:6px}.live-nav{min-width:36px}}
 @media(prefers-reduced-motion:reduce){.live-location-dot::after{animation:none}}
 .stage:has(#map-instruction:not([hidden])) .leaflet-top{top:130px}@media(max-width:700px){.stage:has(#map-instruction:not([hidden])) .leaflet-top{top:155px}}
-#error.pin-issue{color:var(--ink);background:var(--soft);padding:12px 14px;font-size:12px;line-height:1.5;margin-top:12px}#error.pin-issue strong{font-weight:500}#error.pin-issue p{margin-top:5px}#error.pin-issue button{min-height:40px;padding:8px 0 0;color:var(--ink);text-decoration:underline;text-underline-offset:3px}
 .location-status:empty{display:none}
 /* Keep the phone map unobstructed: instructions and actions have their own rows. */
 @media(max-width:700px){
@@ -144,4 +143,26 @@
  .stage:has(#street-map:not([hidden])) .live-map-controls{position:relative;inset:auto;order:3;width:auto;max-width:none;margin:12px 15px 16px;padding:12px 15px;box-shadow:none}
  .stage:has(#street-map:not([hidden])) .live-map-controls>div{flex-wrap:wrap;gap:4px 16px}
  .stage:has(#street-map:not([hidden])) .leaflet-top{top:12px}
+}
+/* Keep recovery beside the stop, and the primary action on its own. */
+.entrance-action{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:#625f55;border-left:2px solid #936047;padding-left:10px}
+.entrance-action .inline-link{padding:8px 0;min-height:40px;color:var(--ink);white-space:nowrap;text-decoration:underline;text-underline-offset:4px}
+.stop-list .stop.needs-entrance{flex-wrap:wrap}
+.stop-list .entrance-action{flex:0 0 calc(100% - 30px);margin-left:30px}
+#start-entrance:not(:empty){margin:8px 0}
+.trip-options{margin:22px 0 0;padding:16px 0}.trip-options>summary{font-size:13px}.trip-options .preferences{margin:12px 0 0}.trip-options .planner-storage{padding-top:8px;margin-top:12px}
+.add-options{margin:12px 0 22px}.add-options>summary{font-size:12px}.add-options .planner-extra{border:0;margin:0}.add-options #office-directory{display:block}
+#plan-panel .plan-action-bar{margin-bottom:0;bottom:-30px}#plan-panel .stop-heading{margin-top:24px}
+@media(max-width:700px){
+ #plan-panel{padding-bottom:max(24px,env(safe-area-inset-bottom))}
+ #plan-panel .plan-action-bar{bottom:-24px;margin-top:24px;padding-top:12px;padding-bottom:max(16px,env(safe-area-inset-bottom))}
+ .stop-list .stop{display:grid;grid-template-columns:20px minmax(0,1fr) 36px;gap:4px 10px;padding:16px 0}
+ .stop-list .stop>span{grid-column:1;grid-row:1;align-self:center}
+ .stop-list .stop .name{grid-column:2;grid-row:1;text-align:left;line-height:1.45}
+ .stop-list .stop .remove{grid-column:3;grid-row:1}
+ .stop-list .stop .duration-label{grid-column:2;grid-row:2;justify-content:flex-start;color:#716e63}
+ .stop-list .stop .stop-minutes{width:40px!important;min-height:32px;padding:4px 0;border-bottom-color:transparent;text-align:left}
+ .stop-list .stop.needs-entrance{display:grid}
+ .stop-list .stop .entrance-action{grid-column:2 / 4;grid-row:3;margin:4px 0 0;flex-basis:auto}
+ .trip-options .list-actions{gap:12px;flex-wrap:wrap}.bulk-entry{padding:10px 0}.bulk-entry>span,.bulk-entry small{display:none}
 }

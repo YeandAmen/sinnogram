@@ -1,6 +1,6 @@
 const $ = id => document.getElementById(id);
 let config, startPlace, stops = [], result = null, busy = false, activePlace = null;
-let stopMinutes={},sharedDraft=null;
+let stopMinutes={},sharedDraft=null,pinIssue=null;
 let tripStep=0, tripStarted=false, tripComplete=false;
 let locationRequest=0, capturedFix=null, locating=false, captureRecovery=null;
 function clearCaptureRecovery(){
@@ -44,17 +44,25 @@ async function api(path, options) {
   if(!response.ok){const failure=Error(data.error||'Please try again.');failure.code=data.code;failure.placeIndex=data.place_index;throw failure}
   return data;
 }
-function error(message){$('error').classList.remove('pin-issue');$('error').replaceChildren(document.createTextNode(message))}
-function routeError(failure){
- error(failure.message);
- const index=failure.placeIndex,place=index===0?startPlace:stops[index-1];
- if(failure.code!=='pin_off_road'||!Number.isInteger(index)||index<0||!place)return;
- const root=$('error');root.classList.add('pin-issue');root.replaceChildren(el('strong',`${index===0?'Starting point':`Stop ${number(index)}`} · ${title(place)}`),el('p','Adjust its pin to the entrance or a nearby driving road, then plan again.'));
- const fix=el('button','Fix this pin ↗','inline-link');fix.type='button';fix.onclick=()=>{
+function error(message){
+  pinIssue=null;$('error').replaceChildren(document.createTextNode(message));
+  if(config)renderStopList();
+}
+function entranceAction(index,place){
+ const note=el('div',undefined,'entrance-action');note.setAttribute('role','status');
+ note.append(el('span','Choose a driving entrance'));
+ const fix=el('button','Choose entrance ↗','inline-link');fix.type='button';fix.onclick=()=>{
    openMap({...place,match:'street'},index===0?'start':'repair','plan');
    if(index===0&&startSource==='gps'){pendingPin.startSource='gps';pendingPin.capturedAt=startCapturedAt}
    if(index>0)pendingPin.repairIndex=index-1;
- };root.append(fix);
+ };note.append(fix);return note;
+}
+function routeError(failure){
+ const index=failure.placeIndex,place=index===0?startPlace:stops[index-1];
+ if(failure.code!=='pin_off_road'||!Number.isInteger(index)||index<0||!place){error(failure.message);return}
+ error('');pinIssue=index;renderStopList();
+ const target=index===0?$('start-entrance'):$('stops').children[index-1];
+ target?.scrollIntoView({block:'center',behavior:'smooth'});
 }
 
 function save() {
@@ -210,13 +218,18 @@ function renderScene(){
   // A canvas failure must never interrupt trip editing or device capture.
   try{if(typeof sinnogramScene!=='undefined')sinnogramScene.set(points,hasTrip?actual:[],selected)}catch(e){console.warn('The decorative scene could not redraw.')}
 }
+function renderStopList(){
+  $('start-entrance').replaceChildren();
+  if(pinIssue===0&&startPlace)$('start-entrance').append(entranceAction(0,startPlace));
+  const list=$('stops');list.replaceChildren();
+  if(!stops.length)list.append(el('p','No destinations yet. Search above or place a pin.','micro'));
+  stops.forEach((p,i)=>{const row=el('div',undefined,'stop');const name=el('button',title(p),'name');name.onclick=()=>showStop(p,i);const remove=el('button','×','remove');remove.setAttribute('aria-label',`Remove ${title(p)}`);remove.onclick=()=>{delete stopMinutes[`${p.lat},${p.lng},${p.name}`];stops.splice(i,1);invalidate()};const dwell=el('input');dwell.type='number';dwell.min='0';dwell.max='1440';dwell.value=minutesFor(p);dwell.className='stop-minutes';dwell.setAttribute('aria-label','Minutes at '+title(p));dwell.oninput=()=>{stopMinutes[`${p.lat},${p.lng},${p.name}`]=Math.max(0,Math.min(1440,Number(dwell.value)||0));save();updateTripStats()};dwell.onchange=()=>{dwell.value=minutesFor(p)};const duration=el('label',undefined,'duration-label');duration.append(dwell,el('span','min'));row.append(el('span',number(i+1)),name,duration,remove);if(pinIssue===i+1){row.classList.add('needs-entrance');row.append(entranceAction(i+1,p))}list.append(row)});
+}
 function render(){
   if(!config)return;
   $('optimize').disabled=busy||locating||!startPlace;$('start-required').hidden=!!startPlace;
   $('nav-count').textContent=number(stops.length);$('stop-count').textContent=`${number(stops.length)} / 10`;
-  const list=$('stops');list.replaceChildren();
-  if(!stops.length)list.append(el('p','No destinations yet. Search above or place a pin.','micro'));
-  stops.forEach((p,i)=>{const row=el('div',undefined,'stop');const name=el('button',title(p),'name');name.onclick=()=>showStop(p,i);const remove=el('button','×','remove');remove.setAttribute('aria-label',`Remove ${title(p)}`);remove.onclick=()=>{delete stopMinutes[`${p.lat},${p.lng},${p.name}`];stops.splice(i,1);invalidate()};const dwell=el('input');dwell.type='number';dwell.min='0';dwell.max='1440';dwell.value=minutesFor(p);dwell.className='stop-minutes';dwell.setAttribute('aria-label','Minutes at '+title(p));dwell.oninput=()=>{stopMinutes[`${p.lat},${p.lng},${p.name}`]=Math.max(0,Math.min(1440,Number(dwell.value)||0));save();updateTripStats()};dwell.onchange=()=>{dwell.value=minutesFor(p)};const duration=el('label',undefined,'duration-label');duration.append(dwell,el('span','min'));row.append(el('span',number(i+1)),name,duration,remove);list.append(row)});
+  renderStopList();
   const timeline=$('timeline');timeline.replaceChildren();
   const points=startPlace?journeyPoints():[null,...stops];
   if(stops.length){points.forEach((p,i)=>{if(!p){timeline.append(startPromptCard());return}const card=el('button',undefined,'timeline-card');card.setAttribute('data-visit',String(i));if(sameVisit(p,activePlace))card.classList.add('selected');const image=el('span',undefined,'timeline-image');image.innerHTML=sketch(i+1);const copy=el('div');copy.append(el('span',i===0?'STARTING POINT':`STOP ${number(i)}${result&&i===points.length-1&&sameVisit(p,startPlace)?' · BACK HOME':''}`,'date'),el('h3',title(p)));copy.append(el('p',i===0?'Your day begins here.':result?`${km(result.legs[i-1].meters)} · ${Math.ceil(result.legs[i-1].seconds/60)} min from last stop`:p.name.split(',').slice(1,3).join(',')||'Ready to find its place.'));card.append(image,copy);card.onclick=()=>showStop(p,i-1);timeline.append(card)})}
