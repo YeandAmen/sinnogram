@@ -24,6 +24,8 @@ Come back from Maps and your itinerary is still there. It stays on your device f
 - Up to **10 stops**, with an optional trip back home.
 - **Shortest whole trip** and **nearest next stop** modes. They are different; nearest first can still send you back and forth.
 - Real driving distances and time estimates from **OSRM**, using OpenStreetMap data.
+- A **live GPS marker**, with follow and recenter controls, that updates while the app is open and resumes on return.
+- A location index filtered to the **whole FCT and all six area councils**, with versioned OSM/Overture imports and council-level coverage checks.
 - Multiline addresses, street fallbacks, and a real map for confirming the right building.
 - A mobile interface with sculptural waypoints, a horizontal trip timeline, and proper SVG icons. No surprise blue emoji buttons.
 - A **Go backend**, a small browser frontend, and no frontend build ceremony.

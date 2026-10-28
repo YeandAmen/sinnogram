@@ -103,6 +103,7 @@ type Candidate struct {
 	Place
 	ID          string `json:"id,omitempty"`
 	Category    string `json:"category,omitempty"`
+	AreaCouncil string `json:"area_council,omitempty"`
 	UpdatedAt   string `json:"updated_at,omitempty"`
 	License     string `json:"license,omitempty"`
 	Unlocated   bool   `json:"unlocated,omitempty"`
@@ -163,7 +164,7 @@ func (o *osm) searchRaw(ctx context.Context, q string) ([]Candidate, error) {
 	if ok {
 		return append([]Candidate{}, cached...), nil
 	}
-	params := url.Values{"q": {q}, "format": {"jsonv2"}, "countrycodes": {"ng"}, "viewbox": {"7.15,9.40,7.80,8.80"}, "bounded": {"1"}, "limit": {"5"}, "addressdetails": {"1"}}
+	params := url.Values{"q": {q}, "format": {"jsonv2"}, "countrycodes": {"ng"}, "viewbox": {fctCoverage.Viewbox()}, "bounded": {"1"}, "limit": {"5"}, "addressdetails": {"1"}}
 	var rows []struct {
 		Name     string `json:"display_name"`
 		Lat      string `json:"lat"`
@@ -185,6 +186,9 @@ func (o *osm) searchRaw(ctx context.Context, q string) ([]Candidate, error) {
 		if e1 != nil || e2 != nil || math.IsNaN(lat) || math.IsNaN(lng) || math.IsInf(lat, 0) || math.IsInf(lng, 0) || math.Abs(lat) > 90 || math.Abs(lng) > 180 {
 			continue
 		}
+		if !fctCoverage.Contains(lat, lng) {
+			continue
+		}
 		name := r.Name
 		if len(name) > 300 {
 			name = string([]rune(name)[:min(150, len([]rune(name)))])
@@ -194,7 +198,7 @@ func (o *osm) searchRaw(ctx context.Context, q string) ([]Candidate, error) {
 			match = "street"
 			description = "Street or area match only. The plot number is not verified. Move the pin to your building before adding this stop."
 		}
-		out = append(out, Candidate{Place: Place{Name: name, Lat: lat, Lng: lng}, Match: match, Description: description})
+		out = append(out, Candidate{Place: Place{Name: name, Lat: lat, Lng: lng}, Match: match, Description: description, AreaCouncil: fctCoverage.Council(lat, lng)})
 	}
 	o.mu.Lock()
 	if len(o.cache) >= 100 {
@@ -214,7 +218,7 @@ func (o *osm) SearchDetailed(ctx context.Context, q string) (SearchResponse, err
 	}
 	if rows := catalog.Search(q); len(rows) > 0 {
 		result.Results = rows
-		result.Message = "Matches from the Abuja location index. Address-only leads need a mapped pin; mapped places still need an entrance check."
+		result.Message = "Matches from the FCT location index. Address-only leads need a mapped pin; mapped places still need an entrance check."
 		return result, nil
 	}
 	if fallback := streetQuery(q); fallback != "" && !strings.EqualFold(fallback, q) {
@@ -231,7 +235,7 @@ func (o *osm) SearchDetailed(ctx context.Context, q string) (SearchResponse, err
 		if len(rows) > 0 {
 			for i := range rows {
 				rows[i].Match = "street"
-				rows[i].Description = "Street match within greater Abuja. The district and plot number are not verified. Check the district and move the pin to the exact building before adding."
+				rows[i].Description = "Street match within the FCT. The district and plot number are not verified. Check the district and move the pin to the exact building before adding."
 			}
 			result.Results = rows
 			result.Message = "The plot number is not verified. Found street candidates—check the district and exact building pin."

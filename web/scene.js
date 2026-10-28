@@ -7,6 +7,7 @@
   const still=matchMedia('(prefers-reduced-motion: reduce)').matches;
   let globe,ready=false,points=[],route=[],selected=-1,marker,markerButton,markerCoords,lastSelection='',fallback=false,loadTimer;
   let lastFrame=null,pauseUntil=0,orbitReady=false,orbitPaused=still;
+  let liveFix=null,liveState='off',liveMarker,liveButton;
   const empty=()=>({type:'FeatureCollection',features:[]});
   function facesCamera(coords,center){
     const r=Math.PI/180,lat=coords[1]*r;
@@ -17,7 +18,11 @@
     const center=globe.getCenter();
     if(markerButton&&markerCoords){
       const pin=globe.project(markerCoords);
-      markerButton.hidden=!facesCamera(markerCoords,center)||pin.x<16||pin.x>host.clientWidth-16||pin.y<20||pin.y>host.clientHeight-30;
+      markerButton.hidden=(!!liveFix&&selected<0)||!facesCamera(markerCoords,center)||pin.x<16||pin.x>host.clientWidth-16||pin.y<20||pin.y>host.clientHeight-30;
+    }
+    if(liveButton&&liveFix){
+      const coords=[liveFix.lng,liveFix.lat],pin=globe.project(coords);
+      liveButton.hidden=!facesCamera(coords,center)||pin.x<16||pin.x>host.clientWidth-16||pin.y<20||pin.y>host.clientHeight-30;
     }
     const p=globe.project([8.67,9.08]),w=host.clientWidth,h=host.clientHeight;
     callout.hidden=!facesCamera([8.67,9.08],center)||p.x<8||p.x>w-8||p.y<8||p.y>h-8;
@@ -31,7 +36,7 @@
   function orbitFrame(t){
     if(lastFrame!==null&&t-lastFrame<40){requestAnimationFrame(orbitFrame);return}
     const elapsed=lastFrame===null?0:Math.min(t-lastFrame,100);lastFrame=t;
-    if(ready&&orbitReady&&!orbitPaused&&selected<0&&document.visibilityState==='visible'&&t>=pauseUntil&&!globe.isMoving()&&!document.getElementById('experience').classList.contains('panel-open')){
+    if(ready&&orbitReady&&!orbitPaused&&!liveFix&&selected<0&&document.visibilityState==='visible'&&t>=pauseUntil&&!globe.isMoving()&&!document.getElementById('experience').classList.contains('panel-open')){
       const center=globe.getCenter();globe.jumpTo({center:[center.lng+elapsed*.0028,center.lat]});
     }
     requestAnimationFrame(orbitFrame);
@@ -45,6 +50,22 @@
   function overviewZoom(){return Math.max(-.4,Math.min(2,Math.log2(Math.max(100,Math.min(host.clientWidth,host.clientHeight))*.50/81.5)))}
   function flight(center,zoom){if(!ready)return;globe[still?'jumpTo':'flyTo']({center,zoom,duration:1300,essential:false})}
   function reset(){flight([7.46,14],overviewZoom())}
+  function refreshLive(){
+    if(!ready)return;
+    if(!liveFix){liveMarker?.remove();liveMarker=null;liveButton=null;annotateNigeria();return}
+    if(!liveMarker){
+      liveButton=document.createElement('button');liveButton.type='button';liveButton.className='globe-pin globe-live-pin';
+      const dot=document.createElement('span');dot.className='live-location-dot';dot.setAttribute('aria-hidden','true');
+      const label=document.createElement('span');label.className='globe-pin-label';
+      liveButton.append(dot,label);liveButton.onclick=e=>{e.stopPropagation();window.sinnogramScene.onLocate?.()};
+      liveMarker=new maplibregl.Marker({element:liveButton,anchor:'top',offset:[0,-15]}).setLngLat([liveFix.lng,liveFix.lat]).addTo(globe);
+    }
+    const fresh=['live','approximate'].includes(liveState);
+    liveButton.children[0].classList.toggle('stale',!fresh);
+    liveButton.children[1].textContent=fresh?(liveFix.needsConfirmation?'Approximate location':'You are here'):'Last location';
+    liveButton.setAttribute('aria-label',`${liveButton.children[1].textContent}, accuracy about ${Math.round(liveFix.accuracy)} metres. Show on the street map.`);
+    liveMarker.setLngLat([liveFix.lng,liveFix.lat]);annotateNigeria();
+  }
   function refresh(){
     if(!ready)return;
     const source=globe.getSource('journey');
@@ -63,16 +84,18 @@
     const key=place?`${place.lat},${place.lng}`:'';
     annotateNigeria();
     if(key!==lastSelection){lastSelection=key;flight(place?coords:[7.46,14],place?Math.max(overviewZoom(),2.1):overviewZoom())}
+    refreshLive();
   }
   function staticFallback(){
-    if(fallback)return;callout.hidden=true;clearTimeout(loadTimer);fallback=true;ready=false;marker?.remove();try{globe?.remove()}catch{}
+    if(fallback)return;callout.hidden=true;clearTimeout(loadTimer);fallback=true;ready=false;marker?.remove();liveMarker?.remove();try{globe?.remove()}catch{}
     root.classList.add('globe-fallback');status.textContent='Globe preview · use Street map for roads and pins';
     const img=document.createElement('img');img.src='/vendor/earth-preview.svg';img.alt='Globe showing Africa, with Abuja marked in Nigeria';img.className='globe-preview';host.replaceChildren(img);
   }
   window.sinnogramScene={
     set(data,links=[],active=-1){points=data;route=links;selected=active;refresh()},
+    setLiveLocation(fix,state='live'){liveFix=fix;liveState=state;refreshLive()},
     zoomBy(value){if(ready)globe.easeTo({zoom:Math.max(-.4,Math.min(6,globe.getZoom()+value*3)),duration:still?0:350})},
-    reset,onSelect:null
+    reset,onSelect:null,onLocate:null
   };
   home.onclick=()=>{pauseOrbit();lastSelection='';reset()};
   for(const event of ['pointerdown','pointermove','wheel','keydown','focusin'])root.addEventListener(event,pauseOrbit,{passive:true});

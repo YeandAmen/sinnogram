@@ -2,7 +2,7 @@
 
 ## OpenStreetMap snapshot
 
-`osm_locations.json` contains 2,750 normalized mapped records (1,841 places/address points and 909 named street records) from the OSM snapshot timestamp recorded in that file. Source: one export through [Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API). Bounding box: west 7.15, south 8.80, east 7.80, north 9.40 (greater Abuja and nearby areas, not an official FCT boundary).
+`osm_locations.json` contains 3,778 normalized records from the [Geofabrik Nigeria extract dated 27 October 2026](https://download.geofabrik.de/africa/nigeria-261027.osm.pbf), with OSM replication timestamp `2026-10-27T21:23:59Z`. The download was verified against its published MD5 checksum; the source SHA-256 is retained in the JSON. Records are filtered to the FCT polygon, including all six area councils. Nodes retain their positions; ways/areas use representative geometry points, and road representatives remain on their FCT road segment.
 
 © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright). The OSM database and this derived OSM catalog are provided under the [Open Database License 1.0](https://opendatacommons.org/licenses/odbl/1-0/). Database contents are subject to the [Database Contents License](https://opendatacommons.org/licenses/dbcl/1-0/). Attribution, ODbL notice and the source data must travel with redistributed copies; database share-alike requirements apply. The live app provides this catalog through `/api/location-data`.
 
@@ -21,11 +21,15 @@ No Google Maps scrape, AGIS record export or NIPOST bulk dataset is included. Fu
 
 ## Overture places expansion
 
-`overture_places.json` adds 16,423 normalized records from Overture's `2026-10-21.0` places release, downloaded for the same greater-Abuja bounding box with the official `overturemaps` 1.0.2 client. These are source records, not a count of unique verified businesses. Names/near-identical points are deduplicated within the import; search also suppresses nearby same-name results across sources. Distinct branches and co-located organisations are kept separate.
+`overture_places.json` adds 16,220 normalized records from Overture's `2026-10-21.0` places release, downloaded over the complete FCT envelope with the official `overturemaps` 1.0.2 client, then polygon-filtered. The export's release, envelope and raw-file hash are recorded by the collector and checked by the importer. These are source records, not a count of unique verified businesses. Names/near-identical points are deduplicated within the import; search also suppresses nearby same-name results across sources. Distinct branches and co-located organisations are kept separate.
 
 Sources include Meta, Microsoft, Overture, Uberall, AllThePlaces, Foursquare, PinMeTo and OpenTravel. Preserve per-record source IDs, timestamps, confidence and licenses. CDLA-Permissive-2.0, Apache-2.0 and CC0-1.0 apply as indicated in each record. Complete CDLA/Apache license texts and the Foursquare NOTICE are in `data/licenses/` and embedded in the downloadable JSON at `/api/location-data?source=overture`. Foursquare copyright and NOTICE are preserved; the source was transformed to Overture's schema and subsequently filtered/normalized for Sinnogram. See [Overture's source attribution](https://docs.overturemaps.org/attribution/).
 
-The snapshot records its release and raw-file SHA-256. Re-import with `scripts/import_overture_places.py` after downloading a newer official GeoJSON sequence. The importer rejects unsupported licenses/source datasets, missing coordinates, points outside the bounding box, explicitly closed records and duplicate nearby same-name points. A confidence score is a source signal, not an independent entrance verification. Listings below 0.7 require a corrected map pin before routing; higher scores still require a user map check. Missing/update/closure data can be stale.
+The snapshot records its release and raw-file SHA-256. Re-import with `scripts/import_overture_places.py` after downloading a newer official GeoJSON sequence. The importer rejects unsupported licenses/source datasets, missing coordinates, points outside the FCT polygon, explicitly closed records and duplicate nearby same-name points. A confidence score is a source signal, not an independent entrance verification. Listings below 0.7 require a corrected map pin before routing; higher scores still require a user map check. Missing/update/closure data can be stale.
+
+## FCT administrative boundary
+
+`fct_boundary.geojson` contains the FCT and its six area councils from GRID3 Nigeria (2022), distributed through [geoBoundaries gbOpen ADM1](https://www.geoboundaries.org/api/current/gbOpen/NGA/ADM1/) and [ADM2](https://www.geoboundaries.org/api/current/gbOpen/NGA/ADM2/), pinned to source revision `9469f09`. © GRID3 / geoBoundaries contributors, licensed under [Creative Commons Attribution 4.0](https://creativecommons.org/licenses/by/4.0/). The transformation selects the FCT and six councils, adds canonical names and scope metadata, and preserves original geometry, source feature identifiers and input hashes. Each mapped snapshot carries the boundary hash and attribution. The boundary is downloadable at `/api/location-data?source=boundary`.
 
 ## Reviewed business-address leads
 

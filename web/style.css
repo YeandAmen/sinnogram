@@ -109,3 +109,25 @@
 .route-view.panel-open .route-banner{flex-wrap:wrap}.timeline-card.selected{border-top-color:#936047}.timeline-card.selected h3{color:#7b4d36}.plan-action-bar button:focus-visible{outline-offset:3px}
 @media(max-width:1050px) and (min-width:701px){.route-view.panel-open .route-banner{max-width:calc(100% - 470px)}}
 .route-view .leaflet-top{top:120px}@media(max-width:700px){.route-view .leaflet-top{top:145px}}
+
+/* A distinct live GPS marker, separate from entrance pins and the trip origin. */
+.live-nav{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;white-space:nowrap}
+.live-nav[data-state="live"],.live-nav[data-state="approximate"]{color:#58704b;border-bottom-color:#58704b}
+.live-nav[data-state="denied"],.live-nav[data-state="unavailable"]{color:var(--error)}
+.live-location-dot{position:relative;display:block;width:22px;height:22px;border:3px solid var(--paper);border-radius:50%;background:#58704b;box-shadow:0 0 0 1px #58704b}
+.live-location-dot::after{content:"";position:absolute;inset:-9px;border:1px solid #58704b;border-radius:50%;animation:location-pulse 2.4s ease-out infinite;pointer-events:none}
+.live-location-dot.stale{background:var(--muted);box-shadow:0 0 0 1px var(--muted)}
+.live-location-dot.stale::after{animation:none;border-style:dashed;border-color:var(--muted);opacity:.5}
+.globe-live-pin{padding:4px;min-height:50px;gap:9px}
+.globe-live-pin .globe-pin-label{color:#3f5635}
+.live-map-controls{position:absolute;z-index:10;bottom:20px;left:18px;max-width:calc(100% - 36px);width:350px;padding:12px 15px;background:var(--paper);border:1px solid var(--line);box-shadow:0 2px 12px #0001}
+.live-map-controls p{font-size:11px;line-height:1.6;margin-bottom:8px}
+.live-map-controls>div{display:flex;gap:16px;align-items:center;justify-content:space-between}
+.live-map-controls button{min-height:36px;font-size:11px;text-decoration:underline;text-underline-offset:4px}
+#live-follow[aria-pressed="true"]{color:#3f5635;font-weight:500}
+.stage:has(#map-confirm:not([hidden])) .live-map-controls{bottom:145px}
+@keyframes location-pulse{0%{transform:scale(.65);opacity:.8}100%{transform:scale(1.35);opacity:0}}
+@media(max-width:700px){nav{gap:8px}.live-nav{min-width:40px}.live-nav-label{display:none}.live-nav .ui-icon{width:18px;height:18px}.live-map-controls{left:15px;bottom:18px;width:calc(100% - 30px);max-width:none}.live-map-controls button{min-height:44px;font-size:12px}}
+@media(max-width:370px){.header{padding-left:12px;padding-right:12px;gap:8px}nav{gap:6px}.live-nav{min-width:36px}}
+@media(prefers-reduced-motion:reduce){.live-location-dot::after{animation:none}}
+.stage:has(#map-instruction:not([hidden])) .leaflet-top{top:130px}@media(max-width:700px){.stage:has(#map-instruction:not([hidden])) .leaflet-top{top:155px}}

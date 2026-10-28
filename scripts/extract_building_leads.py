@@ -9,7 +9,7 @@ KIND=r'(?:plaza|mall|shopping cent(?:re|er)|commercial cent(?:re|er)|complex|tow
 NAME=re.compile(r'(?i)\b([a-z0-9][a-z0-9.&’\' -]{1,65}?\s+'+KIND+r')\b')
 NEAR=re.compile(r'(?i)\b(?:opposite|opp|near|beside|behind|adjacent|after|before|across|close to|next to|by|off)\b')
 UNIT=re.compile(r'(?i)^(?:(?:suite|suit|ste|shop|office|room|block|floor|unit|no\.?|number|plot|ground|first|second|third|1st|2nd|3rd|4th|5th)\s*[-:#.]?\s*[a-z0-9/-]*\s*)+')
-DISTRICT=re.compile(r'(?i)\b(?:wuse\s*(?:zone\s*[1-7]|ii|2|two)?|garki\s*(?:area\s*\d+|ii|2)?|maitama|gwarinpa|gwarimpa|utako|jabi|asokoro|wuyi|gudu|durumi|mabushi|lugbe|kubwa|central business district)\b')
+DISTRICT=re.compile(r'(?i)\b(?:wuse\s*(?:zone\s*[1-7]|ii|2|two)?|garki\s*(?:area\s*\d+|ii|2)?|maitama|gwarinpa|gwarimpa|utako|jabi|asokoro|wuyi|gudu|durumi|mabushi|lugbe|kubwa|central business district|abaji|bwari|gwagwalada|kuje|kwali)\b')
 def extract(snapshot):
  groups={}
  for record in snapshot['records']:
@@ -28,7 +28,7 @@ def extract(snapshot):
    if len(name)<5 or not re.search('[a-zA-Z]',name.split()[0]):continue
    # Generic category phrases do not establish a named building.
    if name.lower() in ['shopping mall','shopping plaza','shopping complex','office complex','business complex','commercial complex','new plaza','the plaza']:continue
-   key=(re.sub(r'[^a-z0-9]','',name.lower()),district)
+   key=(re.sub(r'[^a-z0-9]','',name.lower()),district,record.get('area_council',''))
    group=groups.setdefault(key,{'names':[], 'addresses':[], 'records':[]})
    tail=address[address.find(segment)+len(segment):].strip(' ,')
    if not tail:tail=address
@@ -41,12 +41,14 @@ def extract(snapshot):
   rows.append({'id':'building/'+hashlib.sha256('|'.join(key).encode()).hexdigest()[:14], 'name':name,'address':address[:300],
    'aliases':sorted(set(g['names'])),'precision':'address','category':'commercial building / address lead',
    'source':'https://explore.overturemaps.org/','license':' AND '.join(sorted({part.strip() for r in records.values() for part in r['license'].split(' AND ')})),
-   'updated_at':snapshot.get('snapshot_at',''),'source_record_ids':sorted(records),
+    'updated_at':snapshot.get('snapshot_at',''),'source_record_ids':sorted(records),
+    'area_council':key[2],
    'sources':[{'id':r['id'],'address':r['address'],'sources':r.get('sources',[])} for r in records.values()]})
  return rows
 if __name__=='__main__':
  source=json.loads(Path(sys.argv[1]).read_text());rows=extract(source)
  out={'release':source.get('release'),'snapshot_at':source.get('snapshot_at'),'license':source['license'], 'license_texts':source.get('license_texts',{}),
-  'attribution':'Derived address leads from Overture Maps and source contributors; not verified building coordinates', 'scope':source.get('scope'),'bbox':source.get('bbox'),'records':rows}
- Path(sys.argv[2]).write_text(json.dumps(out,ensure_ascii=False,separators=(',',':'))+'\n')
+   'attribution':'Derived address leads from Overture Maps and source contributors; not verified building coordinates', 'scope':source.get('scope'),'bbox':source.get('bbox'),'boundary_sha256':source.get('boundary_sha256'),'records':rows}
+ destination=Path(sys.argv[2]);temporary=destination.with_suffix(destination.suffix+'.tmp')
+ temporary.write_text(json.dumps(out,ensure_ascii=False,separators=(',',':'))+'\n');temporary.replace(destination)
  print(f'{len(rows)} named building address leads; no coordinates inferred.')

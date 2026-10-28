@@ -18,32 +18,36 @@ import (
 var catalogFiles embed.FS
 
 type catalogRecord struct {
-	ID         string   `json:"id"`
-	Name       string   `json:"name"`
-	Address    string   `json:"address"`
-	Aliases    []string `json:"aliases"`
-	Lat        float64  `json:"lat"`
-	Lng        float64  `json:"lng"`
-	Precision  string   `json:"precision"`
-	Category   string   `json:"category"`
-	Source     string   `json:"source"`
-	License    string   `json:"license"`
-	Confidence *float64 `json:"confidence"`
-	UpdatedAt  string   `json:"updated_at"`
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Address     string   `json:"address"`
+	Aliases     []string `json:"aliases"`
+	Lat         float64  `json:"lat"`
+	Lng         float64  `json:"lng"`
+	Precision   string   `json:"precision"`
+	Category    string   `json:"category"`
+	Source      string   `json:"source"`
+	License     string   `json:"license"`
+	Confidence  *float64 `json:"confidence"`
+	UpdatedAt   string   `json:"updated_at"`
+	AreaCouncil string   `json:"area_council"`
 }
 type catalogSnapshot struct {
-	Release     string          `json:"release"`
-	License     string          `json:"license"`
-	Attribution string          `json:"attribution"`
-	SnapshotAt  string          `json:"snapshot_at"`
-	Scope       string          `json:"scope"`
-	BBox        []float64       `json:"bbox"`
-	Records     []catalogRecord `json:"records"`
+	Release           string          `json:"release"`
+	License           string          `json:"license"`
+	Attribution       string          `json:"attribution"`
+	SnapshotAt        string          `json:"snapshot_at"`
+	Scope             string          `json:"scope"`
+	BBox              []float64       `json:"bbox"`
+	BoundarySHA256    string          `json:"boundary_sha256"`
+	FullFCTCollection bool            `json:"full_fct_collection"`
+	Records           []catalogRecord `json:"records"`
 }
 type indexedLocation struct {
 	Candidate
-	words []string
-	names []string
+	words  []string
+	names  []string
+	street bool
 }
 type locationCatalog struct {
 	entries   []indexedLocation
@@ -52,6 +56,7 @@ type locationCatalog struct {
 	Overture  catalogSnapshot
 	Reviewed  catalogSnapshot
 	Buildings catalogSnapshot
+	Coverage  catalogCoverage
 }
 
 var wuseDistrict = regexp.MustCompile(`(?i)\bwuse[\s-]*(ii|two|2)\b`)
@@ -89,17 +94,19 @@ func loadCatalog() locationCatalog {
 	if err = json.Unmarshal(raw, &c.Snapshot); err != nil {
 		panic(err)
 	}
+	filterFCTSnapshot(&c.Snapshot)
 	for _, r := range c.Snapshot.Records {
-		if r.Name == "" || r.Lat < 8.8 || r.Lat > 9.4 || r.Lng < 7.15 || r.Lng > 7.8 {
-			panic("invalid public catalog record: " + r.ID)
-		}
 		match := "place"
 		description := "Mapped location from OpenStreetMap. The pin may be a building centre, not its entrance. Check the map before adding."
 		if r.Precision == "street" {
 			match = "street"
 			description = "Mapped street only. Move the pin to the building or entrance you need."
 		}
-		c.add(Candidate{Place: Place{placeLabel(r.Name, r.Address), r.Lat, r.Lng}, Match: match, Description: description, Source: r.Source, ID: r.ID, Category: r.Category, UpdatedAt: c.Snapshot.SnapshotAt, License: "ODbL-1.0"}, append([]string{r.Name}, r.Aliases...), r.Address)
+		if r.Precision == "area" {
+			match = "street"
+			description = "Mapped town or area only. Choose the exact destination entrance before routing."
+		}
+		c.add(Candidate{Place: Place{placeLabel(r.Name, r.Address), r.Lat, r.Lng}, Match: match, Description: description, Source: r.Source, ID: r.ID, Category: r.Category, AreaCouncil: r.AreaCouncil, UpdatedAt: c.Snapshot.SnapshotAt, License: "ODbL-1.0"}, append([]string{r.Name}, r.Aliases...), r.Address, r.Precision == "street")
 	}
 	for _, path := range []string{"data/overture_places.json", "data/reviewed_places.json", "data/building_leads.json"} {
 		var snapshot catalogSnapshot
@@ -110,6 +117,7 @@ func loadCatalog() locationCatalog {
 		if e = json.Unmarshal(b, &snapshot); e != nil {
 			panic(e)
 		}
+		filterFCTSnapshot(&snapshot)
 		if strings.Contains(path, "overture") {
 			c.Overture = snapshot
 		} else if strings.Contains(path, "building_leads") {
@@ -131,14 +139,12 @@ func loadCatalog() locationCatalog {
 				if strings.HasPrefix(r.ID, "building/") {
 					description = "Named building found in public business address records. Its location and entrance are not verified. Find and confirm the exact building pin before routing."
 				}
-			} else if r.Name == "" || r.Lat < 8.8 || r.Lat > 9.4 || r.Lng < 7.15 || r.Lng > 7.8 {
-				panic("invalid supplemental point: " + r.ID)
 			}
-			if r.Confidence != nil && *r.Confidence < 0.7 {
+			if !unlocated && r.Confidence != nil && *r.Confidence < 0.7 {
 				match = "uncertain"
 				description = "Low-confidence business listing from Overture Maps. Its location may be outdated or approximate. Check the branch address and move the pin to the correct entrance."
 			}
-			c.add(Candidate{Place: Place{placeLabel(r.Name, r.Address), r.Lat, r.Lng}, Match: match, Unlocated: unlocated, Description: description, Source: r.Source, ID: r.ID, Category: r.Category, License: r.License, UpdatedAt: r.UpdatedAt}, append([]string{r.Name}, r.Aliases...), r.Address)
+			c.add(Candidate{Place: Place{placeLabel(r.Name, r.Address), r.Lat, r.Lng}, Match: match, Unlocated: unlocated, Description: description, Source: r.Source, ID: r.ID, Category: r.Category, AreaCouncil: r.AreaCouncil, License: r.License, UpdatedAt: r.UpdatedAt}, append([]string{r.Name}, r.Aliases...), r.Address)
 		}
 	}
 	f, err := catalogFiles.Open("data/seed_public_locations.csv")
@@ -175,9 +181,10 @@ func loadCatalog() locationCatalog {
 		c.add(Candidate{Place: Place{Name: placeLabel(name, address)}, Match: "address", Unlocated: true, Description: "Published-address lead from the supplied seed list; not independently verified. Precision: " + get("address_precision") + ". Find and confirm its mapped entrance before routing. " + get("notes"), Source: source, ID: fmt.Sprintf("seed/%02d", i+1), Category: get("category")}, names, address)
 		c.Seeds++
 	}
+	c.Coverage = summarizeCoverage(c)
 	return c
 }
-func (c *locationCatalog) add(p Candidate, names []string, address string) {
+func (c *locationCatalog) add(p Candidate, names []string, address string, street ...bool) {
 	n := []string{}
 	seenNames := map[string]bool{}
 	for _, name := range names {
@@ -187,7 +194,7 @@ func (c *locationCatalog) add(p Candidate, names []string, address string) {
 			seenNames[key] = true
 		}
 	}
-	c.entries = append(c.entries, indexedLocation{p, searchWords(strings.Join(names, " ") + " " + address), n})
+	c.entries = append(c.entries, indexedLocation{Candidate: p, words: searchWords(strings.Join(names, " ") + " " + address), names: n, street: len(street) > 0 && street[0]})
 }
 
 // A single insertion/deletion/substitution helps misspelled names, never plot numbers.
@@ -339,7 +346,7 @@ func (c locationCatalog) search(q string, prefix bool) []Candidate {
 func (c locationCatalog) Streets(q string) []Candidate {
 	streets := locationCatalog{}
 	for _, e := range c.entries {
-		if strings.HasPrefix(e.ID, "osm/") && e.Match == "street" {
+		if strings.HasPrefix(e.ID, "osm/") && e.street {
 			streets.entries = append(streets.entries, e)
 		}
 	}

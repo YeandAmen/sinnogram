@@ -4,7 +4,7 @@ const vm=require('node:vm');
 const fs=require('node:fs');
 function scene(fail=false,reduced=false){
  const nodes=new Map(),calls=[],events={},sources={},frames=[];let center={lng:7.46,lat:14},lastMarker;
- function node(){return {clientWidth:700,clientHeight:400,textContent:'',children:[],style:{},classList:{add(){},contains(){return false}},addEventListener(name,fn){this[name]=fn},setAttribute(k,v){this[k]=v},append(...v){this.children.push(...v)},replaceChildren(...v){this.children=v},click(){calls.push('plan')}}}
+  function node(){return {clientWidth:700,clientHeight:400,textContent:'',children:[],style:{},classList:{add(){},toggle(){},contains(){return false}},addEventListener(name,fn){this[name]=fn},setAttribute(k,v){this[k]=v},append(...v){this.children.push(...v)},replaceChildren(...v){this.children=v},click(){calls.push('plan')}}}
  const get=id=>{if(!nodes.has(id))nodes.set(id,node());return nodes.get(id)};
  class GlobeMap {constructor(options){if(fail)throw Error('WebGL unavailable');this.options=options;this.touchZoomRotate={disableRotation(){}};calls.push(options)}on(name,fn){events[name]=fn}setProjection(v){calls.push(v)}setSky(){}addSource(id,v){sources[id]={...v,setData(data){this.data=data}}}addLayer(){}getSource(id){return sources[id]}getCanvas(){return node()}getCenter(){return center}project(){return {x:350,y:200}}isMoving(){return false}jumpTo(v){calls.push(v);if(v.center)center={lng:v.center[0],lat:v.center[1]}}flyTo(v){calls.push(v)}easeTo(v){calls.push(v)}getZoom(){return 1}resize(){}remove(){}}
  class Marker {constructor(options){this.options=options;lastMarker=options.element}setLngLat(v){this.coords=v;return this}addTo(){return this}remove(){}}
@@ -39,4 +39,14 @@ test('Nigeria leader follows the projected country and hides behind the globe',(
 test('selected stops hold the automatic orbit still',()=>{
  const s=scene();s.events['style.load']();s.events.idle();s.frame(100);
  s.api.set([{name:'Selected stop',lat:9,lng:7}],[],0);const selected=s.calls.length;s.frame(400);assert.equal(s.calls.length,selected);
+});
+test('the live geographic marker is queued before load, follows GPS and opens the street map',()=>{
+  const s=scene();let opened=0;s.api.onLocate=()=>opened++;
+  s.api.setLiveLocation({lat:8.477,lng:6.947,accuracy:12},'live');s.events['style.load']();
+  assert.equal(s.marker().children[1].textContent,'You are here');
+  s.marker().onclick({stopPropagation(){}});assert.equal(opened,1);
+  s.api.setLiveLocation({lat:8.85,lng:7.05,accuracy:912,needsConfirmation:true},'approximate');
+  assert.equal(s.marker().children[1].textContent,'Approximate location');
+  s.api.setLiveLocation({lat:8.85,lng:7.05,accuracy:912},'stale');assert.equal(s.marker().children[1].textContent,'Last location');
+  assert.doesNotThrow(()=>s.api.setLiveLocation(null));
 });

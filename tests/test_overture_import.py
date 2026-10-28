@@ -12,4 +12,7 @@ class ImportTest(unittest.TestCase):
   rows,_=normalize([feature(),feature(identity='duplicate'),feature(identity='branch',lat=9.1),feature(identity='other',name='Other Cafe')]);self.assertEqual(len(rows),3)
  def test_does_not_import_explicitly_closed_locations(self):
   closed=feature();closed['properties']['operating_status']='permanently_closed';self.assertFalse(normalize([closed])[0])
+ def test_fct_polygon_keeps_abaji_and_excludes_neighbouring_suleja(self):
+  rows,_=normalize([feature(lat=8.477,lng=6.947),feature(identity='outside',lat=9.183,lng=7.18)])
+  self.assertEqual(len(rows),1);self.assertEqual(rows[0]['area_council'],'Abaji')
 if __name__=='__main__':unittest.main()
