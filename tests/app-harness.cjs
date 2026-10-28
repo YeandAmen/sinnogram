@@ -16,6 +16,7 @@ async function app(reverse,search=async()=>({ok:true,json:async()=>({query:"",re
   navigator:{geolocation:{getCurrentPosition(a,b,c){captures++;success=a;failure=b;options=c}}},
   sinnogramScene:{set(){},zoomBy(){},reset(){}},
   fetch:async(path,init)=>{
+   if(path==='/api/optimize'&&settings.optimize)return settings.optimize(path,init);
    if(path==='/api/reverse')return reverse(path,init);
    if(path.startsWith('/api/search?'))return search(path,init);
    const data=path==='/api/config'?{provider:'osm',samples:[{name:'Wuse test start',lat:9.07,lng:7.46}]}:{mapped_records:2750,seed_leads:39};

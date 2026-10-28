@@ -1,5 +1,6 @@
 const $ = id => document.getElementById(id);
 let config, startPlace, stops = [], result = null, busy = false, activePlace = null;
+let tripStep=0, tripStarted=false, tripComplete=false;
 let locationRequest=0, capturedFix=null, locating=false;
 let startSource='none', startCapturedAt=null, startAccuracy=null;
 let searchRequest=0, searchController=null;
@@ -37,9 +38,10 @@ async function api(path, options) {
 function error(message) {$('error').textContent=message;}
 function save() {
   if(!config)return;
-  try{localStorage.setItem('axis-trip-v1',JSON.stringify({saved_at:Date.now(),provider:config.provider,start:startSource==='gps'?null:startPlace,start_source:startSource,stops,result:!startPlace||startSource==='gps'||config.provider==='google'?null:result,strategy:$('strategy').value,back:$('return').checked}))}catch{$('location-status').textContent='Storage is unavailable. Save your itinerary before opening Maps.'}
+  try{localStorage.setItem('axis-trip-v1',JSON.stringify({saved_at:Date.now(),provider:config.provider,start:startSource==='gps'?null:startPlace,start_source:startSource,stops,progress:{step:tripStep,started:tripStarted,complete:tripComplete},result:!startPlace||startSource==='gps'||config.provider==='google'?null:result,strategy:$('strategy').value,back:$('return').checked}))}catch{$('location-status').textContent='Storage is unavailable. Save your itinerary before opening Maps.'}
 }
-function invalidate(){result=null;error('');save();render();}
+function resetProgress(){tripStep=0;tripStarted=false;tripComplete=false}
+function invalidate(){result=null;resetProgress();error('');save();render();}
 function setStart(place,{source='manual',capturedAt=null,accuracy=null}={}) {
   if(busy)return;
   locationRequest++;capturedFix=null;$('review-location').hidden=true;$('location-status').textContent='';
@@ -108,8 +110,37 @@ function render(){
   $('journey-label').textContent=result?($('strategy').value==='input'?'YOUR DAY · IN YOUR CHOSEN ORDER':'YOUR DAY, IN A BETTER ORDER'):stops.length?'YOUR PLACES · READY TO ORGANIZE':'A DAY, WAITING TO TAKE SHAPE';
   $('trip-stats').hidden=!result;
   if(result){$('total').textContent=km(result.meters);$('time').textContent=result.provider==='demo'?'Demo distance':`≈ ${Math.ceil(result.seconds/60)} min`;$('saving').textContent=result.saved_meters>=0?`${km(result.saved_meters)} less`:`${km(-result.saved_meters)} extra`}
-  setLabel($('overview'),result?'View your itinerary ↗':'Your day, at a glance ↗');
+  setLabel($('overview'),result?(tripComplete?'Trip complete · view itinerary ↗':tripStarted?'Continue my trip ↗':'Start my trip ↗'):'Your day, at a glance ↗');
   renderScene();
+}
+function showTrip(){
+  if(!result?.legs?.length){openPanel('plan');return}
+  const index=Math.min(tripStep,result.legs.length-1);showStop(result.legs[index].to,index);
+}
+function renderTripProgress(index){
+  const root=$('trip-progress');root.replaceChildren();root.hidden=!result?.legs?.length||index<0;
+  if(root.hidden)return;
+  const count=result.legs.length,current=index===tripStep;
+  root.append(el('p',tripComplete?'TRIP COMPLETE':`YOUR TRIP · ${tripStep} OF ${count} STOPS COMPLETED`,'eyebrow'));
+  const status=el('p',tripComplete?'All stops marked as visited. Your itinerary is still available below.':!tripStarted?'Your route is ready. Start your trip, then open directions for each stop.':current?`Next destination: ${title(result.legs[index].to)}. Mark your arrival when you get there.`:`Previewing stop ${number(index+1)}. Your next destination is ${title(result.legs[tripStep].to)}.`,'trip-status');
+  status.setAttribute('role','status');root.append(status);
+  if(!tripComplete){
+    const label=!tripStarted?'Start trip ↗':!current?'Continue to my current stop ↗':index===count-1?'I’ve arrived · finish trip':'I’ve arrived · continue to next stop ↗';
+    const advance=el('button',label,'dark-button full');advance.id='trip-advance';
+    advance.onclick=()=>{
+      if(!tripStarted)tripStarted=true;
+      else if(current){if(tripStep===count-1)tripComplete=true;else tripStep++}
+      save();render();showTrip();
+    };root.append(advance);
+  }
+  root.append(el('p','Open Google Maps or Apple Maps above for driving directions. Return here after arrival to continue. Stops advance only when you confirm.','micro'));
+  const list=el('div',undefined,'trip-order');list.setAttribute('aria-label','Your organized stops');
+  result.legs.forEach((leg,i)=>{
+    const visited=tripComplete||i<tripStep,button=el('button',`${visited?'✓':number(i+1)} · ${title(leg.to)}${!tripComplete&&i===tripStep?' · next':''}`,'trip-order-stop');
+    if(i===index)button.setAttribute('aria-current','step');
+    button.onclick=()=>showStop(leg.to,i);list.append(button);
+  });root.append(list);
+  const edit=el('button','Edit trip','inline-link');edit.onclick=()=>openPanel('plan');root.append(edit);
 }
 function detail(candidate,kind,index){
   activePlace=candidate;closeMap(false);openPanel('detail');
@@ -138,9 +169,14 @@ function detail(candidate,kind,index){
     else{const plan=el('button','Edit & organize my trip ↗','dark-button');plan.onclick=()=>openPanel('plan');actions.append(plan)}
     const inspect=el('button','Inspect this place on the street map ↗','inline-link');inspect.onclick=()=>openMap({...candidate,match:'place'},'inspect','detail');actions.append(inspect);
   }
+  renderTripProgress(kind==='stop'?index:-1);
+  $('detail-panel').scrollTop=0;
   renderScene();
 }
-function showStop(place,index){detail(place,'stop',index)}
+function showStop(place,index){
+  if(result&&index>=0&&!sameVisit(result.legs[index]?.to,place))index=result.legs.findIndex(l=>sameVisit(l.to,place));
+  detail(place,'stop',index);
+}
 function showCandidate(candidate){detail(candidate,'candidate',-1)}
 function showSearch(data){
   const root=$('matches');root.replaceChildren();$('search-status').textContent=`${data.results.length} ${data.results.length===1?'result':'results'} for “${data.query}”. ${data.message||'Select a place below to check its pin.'}`;
@@ -328,15 +364,15 @@ $('locate').onclick=()=>{
 $('locate').disabled=false;
 $('strategy').onchange=invalidate;$('return').onchange=invalidate;
 $('example').onclick=()=>{if(!config)return;setStart(config.samples[0]);stops=[config.samples[3],config.samples[2],config.samples[4],config.samples[1]].map(clean);invalidate()};
-$('clear').onclick=()=>{stops=[];result=null;activePlace=null;try{localStorage.removeItem('axis-trip-v1')}catch{};$('matches').replaceChildren();$('search-status').textContent='Trip cleared.';render()};
+$('clear').onclick=()=>{stops=[];result=null;resetProgress();activePlace=null;try{localStorage.removeItem('axis-trip-v1')}catch{};$('matches').replaceChildren();$('search-status').textContent='Trip cleared.';render()};
 $('optimize').onclick=async()=>{
   if(!config||busy||locating)return;if(!startPlace){error('Capture your current location or choose a starting point first.');return}if(!stops.length){error('Add at least one destination first.');return}
   busy=true;error('');document.querySelectorAll('#plan-panel button,#plan-panel input,#plan-panel select,#plan-panel textarea').forEach(e=>e.disabled=true);$('optimize').textContent='Finding your best order…';
-  try{result=await api('/api/optimize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({start:startPlace,stops,round_trip:$('return').checked,strategy:$('strategy').value})});if(startAccuracy>150)result.notice=`Approximate starting point: device-reported accuracy about ${Math.round(startAccuracy)} m. Distances and visit order depend on this approximate point. `+result.notice;save();render();openPanel(null);showStop(result.legs[0].to,0);$('footer-status').textContent='ROAD ESTIMATES · NO LIVE TRAFFIC'}catch(e){error(e.message)}finally{busy=false;document.querySelectorAll('#plan-panel button,#plan-panel input,#plan-panel select,#plan-panel textarea').forEach(e=>e.disabled=false);$('optimize').replaceChildren(document.createTextNode('Organize my trip '),el('span','↗'))}
+  try{result=await api('/api/optimize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({start:startPlace,stops,round_trip:$('return').checked,strategy:$('strategy').value})});resetProgress();if(startAccuracy>150)result.notice=`Approximate starting point: device-reported accuracy about ${Math.round(startAccuracy)} m. Distances and visit order depend on this approximate point. `+result.notice;save();render();openPanel(null);showTrip();$('footer-status').textContent='ROAD ESTIMATES · NO LIVE TRAFFIC'}catch(e){error(e.message)}finally{busy=false;document.querySelectorAll('#plan-panel button,#plan-panel input,#plan-panel select,#plan-panel textarea').forEach(e=>e.disabled=false);$('optimize').replaceChildren(document.createTextNode('Organize my trip '),el('span','↗'))}
 };
 $('download').onclick=()=>{if(!result)return;const text=['SINNOGRAM / YOUR DAY IN ABUJA',`Start: ${startPlace.name}`,`Total: ${km(result.meters)} · about ${Math.ceil(result.seconds/60)} minutes driving`,result.notice,'',...result.legs.map((l,i)=>`${i+1}. ${l.to.name}\nFrom ${l.from.name}\n${km(l.meters)}\nGoogle: ${l.google}\nApple: ${l.apple}`)].join('\n');const url=URL.createObjectURL(new Blob([text],{type:'text/plain'}));const a=el('a');a.href=url;a.download='sinnogram-itinerary.txt';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 $('begin').onclick=$('nav-plan').onclick=()=>{closeMap(false);openPanel('plan')};$('nav-explore').onclick=explore;$('nav-map').onclick=()=>openMap();$('close-plan').onclick=$('close-detail').onclick=explore;
-$('overview').onclick=()=>{if(result)showStop(result.legs[0].to,0);else openPanel('plan')};
+$('overview').onclick=showTrip;
 $('zoom-in').onclick=()=>sinnogramScene.zoomBy(.15);$('zoom-out').onclick=()=>sinnogramScene.zoomBy(-.15);$('reset-view').onclick=()=>sinnogramScene.reset();
 if(typeof sinnogramScene!=='undefined')sinnogramScene.onSelect=p=>{const index=stops.findIndex(v=>same(v,p));if(index>=0||same(startPlace,p))showStop(p,index);else showCandidate({...p,match:'place',description:'An example district/location in Abuja. Confirm the exact entrance pin before adding it.'})};
 $('about').onclick=()=>$('about-dialog').showModal();$('close-about').onclick=()=>$('about-dialog').close();
@@ -354,6 +390,7 @@ $('about').onclick=()=>$('about-dialog').showModal();$('close-about').onclick=()
         startPlace=clean(stored.start);startSource='saved';
         const option=el('option','Saved · '+startPlace.name);option.value='custom';$('start').append(option);$('start').value='custom';
         result=stored.result?.legs?.length&&same(stored.result.legs[0].from,startPlace)?stored.result:null;
+        if(result&&Number.isInteger(stored.progress?.step)&&stored.progress.step>=0&&stored.progress.step<result.legs.length){tripStep=stored.progress.step;tripStarted=stored.progress.started===true;tripComplete=tripStarted&&tripStep===result.legs.length-1&&stored.progress.complete===true}
         $('location-status').textContent='Saved fixed starting point. Use your current location to capture where you are now.';
       }else{
         $('location-status').textContent=stops.length?'Your saved stops are restored. Capture a fresh location or choose a starting point.':'Capture a fresh location or choose a starting point.';
