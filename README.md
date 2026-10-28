@@ -9,7 +9,7 @@ You have six places to be. Somehow, you end up crossing the same part of Abuja f
 
 **Open beta. No sign-in required. Abuja first.**
 
-<p align="center"><img src="docs/explore.png" alt="Sinnogram's cream interface, metallic route sculptures, and trip timeline" width="100%"></p>
+<p align="center"><img src="docs/explore.png" alt="Sinnogram's cream interface, geographic globe, and trip timeline" width="100%"></p>
 
 ### A day, sorted
 
@@ -27,5 +27,5 @@ Come back from Maps and your itinerary is still there. It stays on your device f
 - A **live GPS marker**, with follow and recenter controls, that updates while the app is open and resumes on return.
 - A location index filtered to the **whole FCT and all six area councils**, with versioned OSM/Overture imports and council-level coverage checks.
 - Multiline addresses, street fallbacks, and a real map for confirming the right building.
-- A mobile interface with sculptural waypoints, a horizontal trip timeline, and proper SVG icons. No surprise blue emoji buttons.
+- A mobile interface with a geographic globe, city route map, and trip timeline.
 - A **Go backend**, a small browser frontend, and no frontend build ceremony.

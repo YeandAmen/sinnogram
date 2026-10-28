@@ -228,7 +228,7 @@ function renderStopList(){
 function render(){
   if(!config)return;
   $('optimize').disabled=busy||locating||!startPlace;$('start-required').hidden=!!startPlace;
-  $('nav-count').textContent=number(stops.length);$('stop-count').textContent=`${number(stops.length)} / 10`;
+  $('stop-count').textContent=`${number(stops.length)} / 10`;
   renderStopList();
   const timeline=$('timeline');timeline.replaceChildren();
   const points=startPlace?journeyPoints():[null,...stops];

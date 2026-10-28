@@ -1,1 +1,17 @@
-{"$schema":"https://openapi.vercel.sh/vercel.json","framework":"go"}
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "go",
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "axis-abuja-test.vercel.app"
+        }
+      ],
+      "destination": "https://sinnogram.vercel.app/:path*",
+      "permanent": true
+    }
+  ]
+}
