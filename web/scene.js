@@ -3,9 +3,32 @@
 (() => {
   const root=document.getElementById('scene'),host=document.getElementById('globe-map');
   const status=document.getElementById('globe-status'),home=document.getElementById('globe-home');
+  const callout=document.getElementById('nigeria-callout'),leader=document.getElementById('nigeria-leader-path'),target=document.getElementById('nigeria-target'),core=document.getElementById('nigeria-target-core'),label=document.getElementById('nigeria-label');
   const still=matchMedia('(prefers-reduced-motion: reduce)').matches;
   let globe,ready=false,points=[],route=[],selected=-1,marker,lastSelection='',fallback=false,loadTimer;
+  let lastFrame=null,pauseUntil=0,orbitReady=false,orbitPaused=still;
   const empty=()=>({type:'FeatureCollection',features:[]});
+  function annotateNigeria(){
+    if(!ready||fallback){callout.hidden=true;return}
+    const center=globe.getCenter(),r=Math.PI/180,lat=9.08*r;
+    const facing=Math.sin(lat)*Math.sin(center.lat*r)+Math.cos(lat)*Math.cos(center.lat*r)*Math.cos((8.67-center.lng)*r);
+    const p=globe.project([8.67,9.08]),w=host.clientWidth,h=host.clientHeight;
+    callout.hidden=facing<.12||p.x<8||p.x>w-8||p.y<8||p.y>h-8;
+    if(callout.hidden)return;
+    const x=Math.max(110,w*.73),y=Math.max(32,h*.19);
+    label.style.left=`${x}px`;label.style.top=`${y+8}px`;
+    leader.setAttribute('d',`M ${p.x} ${p.y} L ${x-12} ${y} L ${x+68} ${y}`);
+    for(const node of [target,core]){node.setAttribute('cx',p.x);node.setAttribute('cy',p.y)}
+  }
+  function pauseOrbit(){pauseUntil=performance.now()+8000}
+  function orbitFrame(t){
+    if(lastFrame!==null&&t-lastFrame<40){requestAnimationFrame(orbitFrame);return}
+    const elapsed=lastFrame===null?0:Math.min(t-lastFrame,100);lastFrame=t;
+    if(ready&&orbitReady&&!orbitPaused&&selected<0&&document.visibilityState==='visible'&&t>=pauseUntil&&!globe.isMoving()&&!document.getElementById('experience').classList.contains('panel-open')){
+      const center=globe.getCenter();globe.jumpTo({center:[center.lng+elapsed*.0028,center.lat]});
+    }
+    requestAnimationFrame(orbitFrame);
+  }
   function grid(){
     const features=[];
     for(let lng=-180;lng<180;lng+=20){const coordinates=[];for(let lat=-80;lat<=80;lat+=2)coordinates.push([lng,lat]);features.push({type:'Feature',geometry:{type:'LineString',coordinates},properties:{}})}
@@ -33,7 +56,7 @@
     if(key!==lastSelection){lastSelection=key;flight(place?coords:[7.46,14],place?Math.max(overviewZoom(),2.1):overviewZoom())}
   }
   function staticFallback(){
-    if(fallback)return;clearTimeout(loadTimer);fallback=true;ready=false;marker?.remove();try{globe?.remove()}catch{}
+    if(fallback)return;callout.hidden=true;clearTimeout(loadTimer);fallback=true;ready=false;marker?.remove();try{globe?.remove()}catch{}
     root.classList.add('globe-fallback');status.textContent='Globe preview · use Street map for roads and pins';
     const img=document.createElement('img');img.src='/vendor/earth-preview.svg';img.alt='Globe showing Africa, with Abuja marked in Nigeria';img.className='globe-preview';host.replaceChildren(img);
   }
@@ -42,7 +65,11 @@
     zoomBy(value){if(ready)globe.easeTo({zoom:Math.max(-.4,Math.min(6,globe.getZoom()+value*3)),duration:still?0:350})},
     reset,onSelect:null
   };
-  home.onclick=()=>{lastSelection='';reset()};
+  const toggle=document.getElementById('toggle-orbit');
+  function orbitLabel(){toggle.textContent=orbitPaused?'Play orbit':'Pause orbit';toggle.setAttribute('aria-pressed',String(orbitPaused))}
+  toggle.onclick=()=>{orbitPaused=!orbitPaused;pauseUntil=0;orbitLabel()};orbitLabel();
+  home.onclick=()=>{pauseOrbit();lastSelection='';reset()};
+  for(const event of ['pointerdown','pointermove','wheel','keydown','focusin'])root.addEventListener(event,pauseOrbit,{passive:true});
   if(typeof maplibregl==='undefined'){staticFallback();return}
   try{
     maplibregl.setWorkerUrl('/vendor/maplibre-gl-csp-worker.js');
@@ -60,10 +87,12 @@
       globe.addLayer({id:'borders',type:'line',source:'earth',paint:{'line-color':'#aaa795','line-width':.65,'line-opacity':.8}});
       globe.addSource('journey',{type:'geojson',data:empty()});
       globe.addLayer({id:'journey',type:'line',source:'journey',paint:{'line-color':'#936047','line-width':2,'line-dasharray':[2,2]}});
-      ready=true;refresh();
+      ready=true;refresh();annotateNigeria();
       globe.getCanvas().setAttribute('aria-label','Globe: drag to turn, scroll or pinch to zoom; arrow keys move the view');
     });
-    globe.on('idle',()=>{if(ready){clearTimeout(loadTimer);status.textContent=''}});
+    globe.on('move',annotateNigeria);
+    requestAnimationFrame(orbitFrame);
+    globe.on('idle',()=>{if(ready){orbitReady=true;clearTimeout(loadTimer);status.textContent=''}});
     globe.on('error',event=>{if(event.sourceId==='earth')status.textContent='Country outlines unavailable. Your trip planner and Street map are still available.'});
     globe.on('webglcontextlost',staticFallback);
     new ResizeObserver(()=>{if(ready){globe.resize();if(selected<0)reset()}}).observe(host);
