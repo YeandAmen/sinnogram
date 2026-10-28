@@ -3,14 +3,14 @@ const assert=require('node:assert/strict');
 const vm=require('node:vm');
 const fs=require('node:fs');
 function scene(fail=false,reduced=false){
- const nodes=new Map(),calls=[],events={},sources={},frames=[];let center={lng:7.46,lat:14};
+ const nodes=new Map(),calls=[],events={},sources={},frames=[];let center={lng:7.46,lat:14},lastMarker;
  function node(){return {clientWidth:700,clientHeight:400,textContent:'',children:[],style:{},classList:{add(){},contains(){return false}},addEventListener(name,fn){this[name]=fn},setAttribute(k,v){this[k]=v},append(...v){this.children.push(...v)},replaceChildren(...v){this.children=v},click(){calls.push('plan')}}}
  const get=id=>{if(!nodes.has(id))nodes.set(id,node());return nodes.get(id)};
  class GlobeMap {constructor(options){if(fail)throw Error('WebGL unavailable');this.options=options;this.touchZoomRotate={disableRotation(){}};calls.push(options)}on(name,fn){events[name]=fn}setProjection(v){calls.push(v)}setSky(){}addSource(id,v){sources[id]={...v,setData(data){this.data=data}}}addLayer(){}getSource(id){return sources[id]}getCanvas(){return node()}getCenter(){return center}project(){return {x:350,y:200}}isMoving(){return false}jumpTo(v){calls.push(v);if(v.center)center={lng:v.center[0],lat:v.center[1]}}flyTo(v){calls.push(v)}easeTo(v){calls.push(v)}getZoom(){return 1}resize(){}remove(){}}
- class Marker {constructor(options){this.options=options}setLngLat(v){this.coords=v;return this}addTo(){return this}remove(){}}
+ class Marker {constructor(options){this.options=options;lastMarker=options.element}setLngLat(v){this.coords=v;return this}addTo(){return this}remove(){}}
  const context=vm.createContext({console,Math,performance:{now:()=>100},requestAnimationFrame:fn=>frames.push(fn),setTimeout:()=>1,clearTimeout(){},document:{visibilityState:'visible',getElementById:get,createElement:node,addEventListener(){}},window:{},maplibregl:{Map:GlobeMap,Marker,setWorkerUrl:v=>calls.push(v)},matchMedia:()=>({matches:reduced}),ResizeObserver:class{constructor(fn){this.fn=fn}observe(){}}});
  vm.runInContext(fs.readFileSync(require.resolve('../web/scene.js'),'utf8'),context);
- return {api:context.window.sinnogramScene,events,sources,calls,get,frame:t=>{frames.shift()(t)},faceAway:()=>{center={lng:180,lat:14}}};
+ return {api:context.window.sinnogramScene,events,sources,calls,get,frame:t=>{frames.shift()(t)},marker:()=>lastMarker,faceAway:()=>{center={lng:180,lat:14}}};
 }
 test('globe queues places before loading, uses local geometry and keeps the selected geographic pin',()=>{
  const s=scene();const point={name:'Jaiz',lat:9.03,lng:7.48};s.api.set([point],[point,{name:'Taj',lat:9.07,lng:7.45}],0);
@@ -34,7 +34,7 @@ test('automatic orbit advances after load, pauses for interaction, and respects 
 });
 test('Nigeria leader follows the projected country and hides behind the globe',()=>{
  const s=scene();s.events['style.load']();s.events.move();assert.equal(s.get('nigeria-callout').hidden,false);assert.match(s.get('nigeria-leader-path').d,/M 350 200 L/);
- s.faceAway();s.events.move();assert.equal(s.get('nigeria-callout').hidden,true);
+ s.faceAway();s.events.move();assert.equal(s.get('nigeria-callout').hidden,true);assert.equal(s.marker().hidden,true);
 });
 test('explicit pause holds the orbit until played, and selected stops stay still',()=>{
  const s=scene();s.events['style.load']();s.events.idle();s.frame(100);s.get('toggle-orbit').onclick();assert.equal(s.get('toggle-orbit')['aria-pressed'],'true');const before=s.calls.length;s.frame(200);assert.equal(s.calls.length,before);

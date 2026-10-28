@@ -5,15 +5,22 @@
   const status=document.getElementById('globe-status'),home=document.getElementById('globe-home');
   const callout=document.getElementById('nigeria-callout'),leader=document.getElementById('nigeria-leader-path'),target=document.getElementById('nigeria-target'),core=document.getElementById('nigeria-target-core'),label=document.getElementById('nigeria-label');
   const still=matchMedia('(prefers-reduced-motion: reduce)').matches;
-  let globe,ready=false,points=[],route=[],selected=-1,marker,lastSelection='',fallback=false,loadTimer;
+  let globe,ready=false,points=[],route=[],selected=-1,marker,markerButton,markerCoords,lastSelection='',fallback=false,loadTimer;
   let lastFrame=null,pauseUntil=0,orbitReady=false,orbitPaused=still;
   const empty=()=>({type:'FeatureCollection',features:[]});
+  function facesCamera(coords,center){
+    const r=Math.PI/180,lat=coords[1]*r;
+    return Math.sin(lat)*Math.sin(center.lat*r)+Math.cos(lat)*Math.cos(center.lat*r)*Math.cos((coords[0]-center.lng)*r)>.12;
+  }
   function annotateNigeria(){
     if(!ready||fallback){callout.hidden=true;return}
-    const center=globe.getCenter(),r=Math.PI/180,lat=9.08*r;
-    const facing=Math.sin(lat)*Math.sin(center.lat*r)+Math.cos(lat)*Math.cos(center.lat*r)*Math.cos((8.67-center.lng)*r);
+    const center=globe.getCenter();
+    if(markerButton&&markerCoords){
+      const pin=globe.project(markerCoords);
+      markerButton.hidden=!facesCamera(markerCoords,center)||pin.x<16||pin.x>host.clientWidth-16||pin.y<20||pin.y>host.clientHeight-30;
+    }
     const p=globe.project([8.67,9.08]),w=host.clientWidth,h=host.clientHeight;
-    callout.hidden=facing<.12||p.x<8||p.x>w-8||p.y<8||p.y>h-8;
+    callout.hidden=!facesCamera([8.67,9.08],center)||p.x<8||p.x>w-8||p.y<8||p.y>h-8;
     if(callout.hidden)return;
     const x=Math.max(110,w*.73),y=Math.max(32,h*.19);
     label.style.left=`${x}px`;label.style.top=`${y+8}px`;
@@ -50,9 +57,11 @@
     const label=document.createElement('span');label.className='globe-pin-label';label.textContent=place?(place.label||place.name.split(',')[0]):'Abuja';
     button.append(dot,label);button.setAttribute('aria-label',place?`Inspect ${label.textContent}`:'Plan your day in Abuja');
     button.onclick=e=>{e.stopPropagation();if(place)window.sinnogramScene.onSelect?.(place);else document.getElementById('begin').click()};
+    markerButton=button;markerCoords=coords;
     marker=new maplibregl.Marker({element:button,anchor:'center'}).setLngLat(coords).addTo(globe);
     button.setAttribute('aria-label',place?`Inspect ${label.textContent}`:'Plan your day in Abuja');
     const key=place?`${place.lat},${place.lng}`:'';
+    annotateNigeria();
     if(key!==lastSelection){lastSelection=key;flight(place?coords:[7.46,14],place?Math.max(overviewZoom(),2.1):overviewZoom())}
   }
   function staticFallback(){
@@ -73,7 +82,7 @@
   if(typeof maplibregl==='undefined'){staticFallback();return}
   try{
     maplibregl.setWorkerUrl('/vendor/maplibre-gl-csp-worker.js');
-    globe=new maplibregl.Map({container:host,style:{version:8,sources:{},layers:[{id:'ocean',type:'background',paint:{'background-color':'#deded3'}}]},center:[7.46,14],zoom:overviewZoom(),minZoom:-.4,maxZoom:6,attributionControl:false,dragRotate:false,pitchWithRotate:false,renderWorldCopies:false,canvasContextAttributes:{antialias:true}});
+    globe=new maplibregl.Map({container:host,style:{version:8,sources:{},layers:[{id:'ocean',type:'background',paint:{'background-color':'#deded3'}}]},center:[7.46,14],zoom:overviewZoom(),minZoom:-.4,maxZoom:6,attributionControl:false,cooperativeGestures:matchMedia('(max-width: 700px)').matches,dragRotate:false,pitchWithRotate:false,renderWorldCopies:false,canvasContextAttributes:{antialias:true}});
     globe.touchZoomRotate.disableRotation();
     loadTimer=setTimeout(()=>{if(!ready||!globe.isSourceLoaded('earth'))staticFallback()},15000);
     globe.on('style.load',()=>{

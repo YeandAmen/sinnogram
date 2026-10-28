@@ -52,3 +52,35 @@
 .nigeria-callout{position:absolute;inset:0;z-index:2;pointer-events:none;color:#6d523c}.nigeria-callout svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}.nigeria-callout path{fill:none;stroke:currentColor;stroke-width:.8;opacity:.8}.nigeria-callout circle{fill:none;stroke:currentColor;stroke-width:.8}.nigeria-callout #nigeria-target-core{fill:currentColor;stroke:none}.nigeria-label{position:absolute;display:flex;flex-direction:column;gap:5px;text-align:left;white-space:nowrap}.nigeria-label-code{font-size:7px;letter-spacing:1.8px;opacity:.65}.nigeria-label strong{font-size:11px;font-weight:400;letter-spacing:2.6px}.nigeria-label>span:last-child{font-size:7px;letter-spacing:1.4px;opacity:.65}.nigeria-label::after{content:'';height:1px;width:30px;background:currentColor;opacity:.3;margin-top:2px}@media(max-width:700px){.nigeria-label{gap:4px}.nigeria-label strong{font-size:9px;letter-spacing:1.6px}.nigeria-label-code,.nigeria-label>span:last-child{font-size:6px;letter-spacing:1px}}
 .view-controls .orbit-toggle{font-size:9px;letter-spacing:.3px;min-width:70px;width:auto;white-space:nowrap;margin-right:8px}.view-controls .orbit-toggle[aria-pressed="true"]{text-decoration:underline;text-underline-offset:4px}@media(max-width:700px){.view-controls .orbit-toggle{min-width:54px;font-size:8px;margin-right:2px}.scene-hint{max-width:calc(100% - 195px)}}
 .globe-home{bottom:10px}@media(max-width:700px){.globe-home{bottom:-7px}}
+/* Mobile uses a scrolling composition so browser chrome cannot crush the globe. */
+.globe-mobile-hint{display:none}
+@media(max-width:700px){
+ .experience{display:block;height:auto;min-height:calc(100svh - 104px)}
+ .stage{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+ .stage-heading{position:relative;inset:auto;margin:16px 20px 0;max-width:none}
+ .stage-heading h1{font-size:clamp(31px,8.8vw,39px)}
+ #scene,.panel-open #scene{position:relative;inset:auto;width:100%;height:clamp(300px,87vw,420px);min-height:300px;flex:none;margin:20px 0 20px}
+ .globe-orbit{inset:-2% 0;width:100%;height:104%}
+ .globe-home{bottom:0;font-size:7px;padding:8px 10px}
+ .scene-hint{position:relative;inset:auto;max-width:none;margin:4px 20px 0;font-size:9px;line-height:1.6;pointer-events:none}
+ .scene-hint span{font-size:9px}
+ .scene-hint .globe-desktop-hint{display:none}.scene-hint .globe-mobile-hint{display:inline}
+ .view-controls{position:relative;inset:auto;align-self:flex-end;margin:4px 16px 12px;min-height:44px;gap:8px}
+ .view-controls button{min-width:44px;min-height:44px}
+ .view-controls .orbit-toggle{min-width:88px;font-size:10px;margin-right:6px}
+ .journey{padding-top:8px;min-height:158px}
+ .journey-caption{height:auto;min-height:32px;gap:12px;align-items:baseline;flex-wrap:wrap;margin-bottom:6px}
+ .timeline{min-height:120px}
+ footer{min-height:48px;height:auto;padding-top:8px;padding-bottom:8px;flex-wrap:wrap}
+ .globe-pin-label{font-size:9px;max-width:140px}
+}
+@media(max-width:700px){
+ .header{position:sticky;top:0;background:var(--paper);z-index:30}
+ .stage-heading{order:-1}
+ .panel{bottom:0;padding-bottom:max(35px,env(safe-area-inset-bottom))}
+}
+@media(max-width:700px){
+ html{height:auto;min-height:100%;overflow-x:hidden;overflow-y:auto}
+ body{height:auto;min-height:100svh;overflow:visible}
+ html:has(.panel-open){overflow-y:hidden}
+}

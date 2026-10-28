@@ -93,7 +93,7 @@ function renderScene(){
   const selected=activePlace&&!activePlace.unlocated?points.findIndex(p=>same(p,activePlace)):-1;
   // A canvas failure must never interrupt trip editing or device capture.
   try{if(typeof sinnogramScene!=='undefined')sinnogramScene.set(points,hasTrip?actual:[],selected)}catch(e){console.warn('The decorative scene could not redraw.')}
-  $('scene-hint').innerHTML='Drag to turn the globe · Scroll to zoom<br><span>Explore the world. Plan your day in Abuja.</span>';
+  $('scene-hint').innerHTML='<span class="globe-desktop-hint">Drag to turn the globe · Scroll to zoom</span><span class="globe-mobile-hint">Use two fingers to turn · Pinch to zoom</span><br><span>Explore the world. Plan your day in Abuja.</span>';
 }
 function render(){
   if(!config)return;
