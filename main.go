@@ -667,6 +667,11 @@ func handler(p provider) http.Handler {
 		defer cancel()
 		m, e := p.Matrix(ctx, append([]Place{t.Start}, t.Stops...))
 		if e != nil {
+			var pin *roadPinError
+			if errors.As(e, &pin) {
+				jsonOut(w, 422, map[string]any{"error": pin.Error(), "code": "pin_off_road", "place_index": pin.Index})
+				return
+			}
 			fail(w, 502, e.Error())
 			return
 		}

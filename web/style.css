@@ -131,3 +131,5 @@
 @media(max-width:370px){.header{padding-left:12px;padding-right:12px;gap:8px}nav{gap:6px}.live-nav{min-width:36px}}
 @media(prefers-reduced-motion:reduce){.live-location-dot::after{animation:none}}
 .stage:has(#map-instruction:not([hidden])) .leaflet-top{top:130px}@media(max-width:700px){.stage:has(#map-instruction:not([hidden])) .leaflet-top{top:155px}}
+#error.pin-issue{color:var(--ink);background:var(--soft);padding:12px 14px;font-size:12px;line-height:1.5;margin-top:12px}#error.pin-issue strong{font-weight:500}#error.pin-issue p{margin-top:5px}#error.pin-issue button{min-height:40px;padding:8px 0 0;color:var(--ink);text-decoration:underline;text-underline-offset:3px}
+.location-status:empty{display:none}

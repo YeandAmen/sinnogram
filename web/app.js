@@ -36,10 +36,22 @@ function el(tag,text,cls){const e=document.createElement(tag);if(text!==undefine
 async function api(path, options) {
   const response=await fetch(path,options);let data;
   try{data=await response.json()}catch{throw Error('The server could not complete this request. Please try again.')}
-  if(!response.ok){throw Error(data.error||'Please try again.')}
+  if(!response.ok){const failure=Error(data.error||'Please try again.');failure.code=data.code;failure.placeIndex=data.place_index;throw failure}
   return data;
 }
-function error(message) {$('error').textContent=message;}
+function error(message){$('error').classList.remove('pin-issue');$('error').replaceChildren(document.createTextNode(message))}
+function routeError(failure){
+ error(failure.message);
+ const index=failure.placeIndex,place=index===0?startPlace:stops[index-1];
+ if(failure.code!=='pin_off_road'||!Number.isInteger(index)||index<0||!place)return;
+ const root=$('error');root.classList.add('pin-issue');root.replaceChildren(el('strong',`${index===0?'Starting point':`Stop ${number(index)}`} · ${title(place)}`),el('p','Adjust its pin to the entrance or a nearby driving road, then plan again.'));
+ const fix=el('button','Fix this pin ↗','inline-link');fix.type='button';fix.onclick=()=>{
+   openMap({...place,match:'street'},index===0?'start':'repair','plan');
+   if(index===0&&startSource==='gps'){pendingPin.startSource='gps';pendingPin.capturedAt=startCapturedAt}
+   if(index>0)pendingPin.repairIndex=index-1;
+ };root.append(fix);
+}
+
 function save() {
   if(!config)return;
   try{localStorage.setItem('axis-trip-v1',JSON.stringify({saved_at:Date.now(),provider:config.provider,start:startSource==='gps'?null:startPlace,start_source:startSource,stops,progress:{step:tripStep,started:tripStarted,complete:tripComplete},result:!startPlace||startSource==='gps'||config.provider==='google'?null:result,strategy:$('strategy').value,back:$('return').checked,minutes:stopMinutes}))}catch{$('location-status').textContent='Storage is unavailable. Save your itinerary before opening Maps.'}
@@ -253,7 +265,6 @@ function detail(candidate,kind,index){
   $('detail-description').textContent=candidate.description||(result?(result.provider==='demo'?'Demo · approximate locations and straight-line distances.':startAccuracy>150?`Approximate start · device accuracy about ${Math.round(startAccuracy)} m.`:''):'Add your places, then organize the trip to compare driving distances.');
   const credit=$('route-credit');credit.replaceChildren();credit.hidden=kind==='candidate'||!result||result.provider==='demo';
   if(!credit.hidden){const osm=el('a','© OpenStreetMap');osm.href='https://www.openstreetmap.org/copyright';osm.target='_blank';osm.rel='noopener noreferrer';const routing=el('a','OSRM');routing.href='https://routing.openstreetmap.de/about.html';routing.target='_blank';routing.rel='noopener noreferrer';if(result.provider==='google'){const google=el('a','Google Maps');google.href='https://maps.google.com';google.target='_blank';google.rel='noopener noreferrer';credit.append(google)}else credit.append(osm,document.createTextNode(' · '),routing)}
-  setLabel($('detail-source'),'Address source ↗');$('detail-source').hidden=!candidate.source;if(candidate.source)$('detail-source').href=candidate.source;
   const actions=$('detail-actions');actions.replaceChildren();
   if(kind==='candidate'){
     const confirm=el('button',candidate.unlocated?'Choose this address’s map pin ↗':needsPin(candidate)?'Place the exact building pin ↗':'Check & confirm the map pin ↗','dark-button');confirm.onclick=()=>openMap(candidate,'stop','detail');
@@ -571,7 +582,7 @@ function openMap(place=null,action='inspect',origin='explore'){
   $('nav-map').classList.add('active');$('nav-explore').classList.remove('active');mapOrigin=origin;pendingPin=place?{place,action}:null;pinMoved=false;
   liveFollow=action==='live';
   mapMode=action;
-  $('map-confirm').hidden=!place;setLabel($('confirm-pin'),action==='start'?'Set starting point ↗':action==='inspect'?'Back to place ↗':action==='bulk'?'Confirm this stop ↗':'Add confirmed stop ↗');
+  $('map-confirm').hidden=!place;setLabel($('confirm-pin'),action==='start'?'Set starting point ↗':action==='inspect'?'Back to place ↗':action==='bulk'?'Confirm this stop ↗':action==='repair'?'Update this pin ↗':'Add confirmed stop ↗');
   initMap();map.invalidateSize();mapPins.clearLayers();if(editMarker){map.removeLayer(editMarker);editMarker=null;}
   journeyPoints().forEach(p=>L.circleMarker([p.lat,p.lng],{radius:5,weight:1,color:'#35342c',fillColor:'#f1eee5',fillOpacity:1}).bindTooltip(el('span',title(p))).addTo(mapPins));
   if(place){map.setView([place.lat,place.lng],unlocated?12:needsPin(place)?16:17);setMapPin(L.latLng(place.lat,place.lng));}
@@ -590,6 +601,13 @@ $('confirm-pin').onclick=()=>{
   if(tileLoaded===0||(needsPin(place)&&!pinMoved))return;
   const confirmed={name:place.name,lat:coords.lat,lng:coords.lng};
   if(action==='bulk'){confirmBulkPin(confirmed);return}
+  if(action==='repair'){
+    const index=pendingPin.repairIndex;
+    if(!Number.isInteger(index)||!sameVisit(stops[index],place)){closeMap(false);openPanel('plan');error('Your stop list changed. Plan again to check its pins.');return}
+    if([startPlace,...stops.filter((_,i)=>i!==index)].some(p=>sameVisit(p,confirmed))){$('pin-position').textContent='That named location is already in your trip. Choose another entrance.';return}
+    const minutes=minutesFor(stops[index]);delete stopMinutes[`${place.lat},${place.lng},${place.name}`];stops[index]=clean(confirmed);if(minutes)stopMinutes[`${confirmed.lat},${confirmed.lng},${confirmed.name}`]=minutes;
+    pendingPin=null;invalidate();closeMap(false);openPanel('plan');$('search-status').textContent='Pin updated. Plan your route again.';return;
+  }
   if(action==='start'){const fromGPS=pendingPin.startSource==='gps';if(fromGPS&&pinMoved)confirmed.name=`Chosen starting pin · ${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}`;setStart(confirmed,{source:fromGPS?'gps':'manual',capturedAt:pendingPin.capturedAt||null});$('location-status').textContent=fromGPS?'Starting pin confirmed for this visit. Capture your location again after moving.':'Starting point selected on the map.'}else if(!addStop(confirmed))return;
   pendingPin=null;closeMap(false);openPanel('plan');$('matches').replaceChildren();$('search-status').classList.remove('search-failure');$('search-status').textContent='Pin confirmed. Location added to your day.';$('search').value='';
 };
@@ -689,7 +707,7 @@ $('optimize').onclick=async()=>{
   if(!config||busy||locating)return;if(!startPlace){error('Capture your current location or choose a starting point first.');return}if(!stops.length){error('Add at least one destination first.');return}
   busy=true;error('');document.querySelectorAll('#plan-panel button,#plan-panel input,#plan-panel select,#plan-panel textarea').forEach(e=>e.disabled=true);$('optimize').textContent='Finding your best order…';
   const requestedOrigin=startPlace;
-  try{result=await api('/api/optimize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({start:startPlace,stops,round_trip:$('return').checked,strategy:$('strategy').value})});if(same(startPlace,requestedOrigin))for(const leg of result.legs){if(sameVisit(leg.from,requestedOrigin))leg.from=startPlace;if(sameVisit(leg.to,requestedOrigin))leg.to=startPlace}resetProgress();if(startAccuracy>150)result.notice=`Approximate starting point: device-reported accuracy about ${Math.round(startAccuracy)} m. Distances and visit order depend on this approximate point. `+result.notice;save();render();showCityRoute();$('footer-status').textContent='Abuja, Nigeria'}catch(e){openPanel('plan');error(e.message)}finally{busy=false;document.querySelectorAll('#plan-panel button,#plan-panel input,#plan-panel select,#plan-panel textarea').forEach(e=>e.disabled=false);$('optimize').replaceChildren(document.createTextNode('Plan route '),el('span','↗'))}
+  try{result=await api('/api/optimize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({start:startPlace,stops,round_trip:$('return').checked,strategy:$('strategy').value})});if(same(startPlace,requestedOrigin))for(const leg of result.legs){if(sameVisit(leg.from,requestedOrigin))leg.from=startPlace;if(sameVisit(leg.to,requestedOrigin))leg.to=startPlace}resetProgress();if(startAccuracy>150)result.notice=`Approximate starting point: device-reported accuracy about ${Math.round(startAccuracy)} m. Distances and visit order depend on this approximate point. `+result.notice;save();render();showCityRoute();$('footer-status').textContent='Abuja, Nigeria'}catch(e){openPanel('plan');routeError(e)}finally{busy=false;document.querySelectorAll('#plan-panel button,#plan-panel input,#plan-panel select,#plan-panel textarea').forEach(e=>e.disabled=false);$('optimize').replaceChildren(document.createTextNode('Plan route '),el('span','↗'))}
 };
 $('download').onclick=()=>{if(!result)return;const text=['SINNOGRAM / YOUR DAY IN ABUJA',`Start: ${startPlace.name}`,`Total: ${km(result.meters)} · about ${Math.ceil(result.seconds/60)} minutes driving`,`${stopTimeTotal()} minutes planned at stops`,result.notice,'',...result.legs.map((l,i)=>`${i+1}. ${l.to.name}\nFrom ${l.from.name}\n${km(l.meters)}\nGoogle: ${l.google}\nApple: ${l.apple}`)].join('\n');const url=URL.createObjectURL(new Blob([text],{type:'text/plain'}));const a=el('a');a.href=url;a.download='sinnogram-itinerary.txt';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 $('begin').onclick=$('nav-plan').onclick=()=>{closeMap(false);openPanel('plan')};$('nav-explore').onclick=explore;$('nav-map').onclick=()=>result?showCityRoute():openMap();$('close-plan').onclick=$('close-detail').onclick=()=>result?showCityRoute():explore();

@@ -316,14 +316,9 @@ func (o *osm) Matrix(ctx context.Context, p []Place) ([][]cell, error) {
 	if len(data.Sources) != n || len(data.Destinations) != n {
 		return nil, errors.New("the routing service did not confirm the road connections")
 	}
-	for _, v := range data.Sources {
-		if v.Distance > 500 {
-			return nil, errors.New("a pin is over 500 metres from a mapped driving road; move it to the entrance or road")
-		}
-	}
-	for _, v := range data.Destinations {
-		if v.Distance > 500 {
-			return nil, errors.New("a pin is over 500 metres from a mapped driving road; move it to the entrance or road")
+	for i := range p {
+		if data.Sources[i].Distance > 500 || data.Destinations[i].Distance > 500 {
+			return nil, &roadPinError{Index: i, Place: p[i]}
 		}
 	}
 	m := make([][]cell, n)
@@ -341,4 +336,14 @@ func (o *osm) Matrix(ctx context.Context, p []Place) ([][]cell, error) {
 		}
 	}
 	return m, nil
+}
+
+// Identify the input pin so the planner can offer a focused correction.
+type roadPinError struct {
+	Index int
+	Place Place
+}
+
+func (e *roadPinError) Error() string {
+	return fmt.Sprintf("We couldn’t connect “%s” to a mapped driving road.", e.Place.Name)
 }
