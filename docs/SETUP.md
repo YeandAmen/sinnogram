@@ -115,3 +115,7 @@ Google Maps' consumer website and the public OSM index have different coverage. 
 The browser normally loads visible tiles directly from OpenStreetMap. Failed or stalled tile loads retry once through `/api/tiles/{z}/{x}/{y}.png`. The relay uses a fixed OSM upstream, validates tile coordinates and same-site referrers, identifies Sinnogram, honors upstream cache lifetimes and validators, and keeps a bounded memory cache plus browser/CDN caching. It does not prefetch or offer offline downloads. Provider failures are not cached. Map requests disclose the viewed map area to OSM; precise device fixes remain ephemeral in the browser.
 
 A broad device fix is offered as an explicitly approximate starting point. Acceptance is optional, accuracy remains visible, and route notices retain the uncertainty. Confirming a manually adjusted map pin requires loaded map tiles.
+
+### Explore globe
+
+The explore view uses MapLibre GL JS 5.0.0's globe projection with a locally hosted CSP worker. Renderer files and the BSD license are in `web/vendor/`. Country outlines are a reduced Natural Earth 1:110m dataset, in the public domain; provenance is in `web/vendor/NATURAL-EARTH.txt`. Globe exploration does not request OSM tiles. It highlights Nigeria, marks Abuja or the selected stop, and illustrates visit order without claiming to show the driving path. The Leaflet street map remains the precise pin and road view. Unsupported WebGL or a stalled globe falls back to a labelled static geographic preview while the planner remains usable.

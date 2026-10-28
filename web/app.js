@@ -93,7 +93,7 @@ function renderScene(){
   const selected=activePlace&&!activePlace.unlocated?points.findIndex(p=>same(p,activePlace)):-1;
   // A canvas failure must never interrupt trip editing or device capture.
   try{if(typeof sinnogramScene!=='undefined')sinnogramScene.set(points,hasTrip?actual:[],selected)}catch(e){console.warn('The decorative scene could not redraw.')}
-  $('scene-hint').innerHTML='Drag to explore &nbsp;·&nbsp; Select a place to look closer<br><span>Geographic constellation · not a street map</span>';
+  $('scene-hint').innerHTML='Drag to turn the globe · Scroll to zoom<br><span>Explore the world. Plan your day in Abuja.</span>';
 }
 function render(){
   if(!config)return;
@@ -109,7 +109,7 @@ function render(){
   if(stops.length<10){const card=el('button',undefined,'timeline-card add-card');const copy=el('div');copy.append(el('span','WHAT’S YOUR NEXT STOP?','date'),el('h3','Add a place to your day'),el('p','Search an address or set a map pin.'));card.append(el('span','+','add-sign'),copy);card.onclick=()=>{openPanel('plan');$('search').focus()};timeline.append(card)}
   $('journey-label').textContent=result?($('strategy').value==='input'?'YOUR DAY · IN YOUR CHOSEN ORDER':'YOUR DAY, IN A BETTER ORDER'):stops.length?'YOUR PLACES · READY TO ORGANIZE':'A DAY, WAITING TO TAKE SHAPE';
   $('trip-stats').hidden=!result;
-  if(result){$('total').textContent=km(result.meters);$('time').textContent=result.provider==='demo'?'Demo distance':`≈ ${Math.ceil(result.seconds/60)} min`;$('saving').textContent=result.saved_meters>=0?`${km(result.saved_meters)} less`:`${km(-result.saved_meters)} extra`}
+  if(result){$('total').textContent=km(result.meters);$('time').textContent=result.provider==='demo'?'Demo distance':`≈ ${Math.ceil(result.seconds/60)} min · no live traffic`;$('saving').textContent=result.saved_meters>=0?`${km(result.saved_meters)} less`:`${km(-result.saved_meters)} extra`}
   setLabel($('overview'),result?(tripComplete?'Trip complete · view itinerary ↗':tripStarted?'Continue my trip ↗':'Start my trip ↗'):'Your day, at a glance ↗');
   renderScene();
 }
@@ -148,7 +148,9 @@ function detail(candidate,kind,index){
   $('detail-kicker').textContent=kind==='candidate'?'ADDRESS SEARCH / PREVIEW':'A PLACE ON YOUR WAY';
   $('detail-type').textContent=kind==='candidate'?({address:'ADDRESS LEAD · BUILDING PIN NOT VERIFIED',landmark:'VERIFIED LANDMARK ADDRESS',uncertain:'BUSINESS LISTING · VERIFY ITS LOCATION',street:'AREA / STREET · EXACT BUILDING NOT FOUND',place:'MAPPED PLACE',manual:'YOUR CONFIRMED PIN'}[candidate.match]||'LOCATION PREVIEW'):index<0?'STARTING POINT':`STOP ${number(index+1)}`;
   $('detail-title').textContent=title(candidate);$('detail-address').textContent=candidate.name;
-  $('detail-description').textContent=candidate.description||(result?result.notice:'Add your places, then organize the trip to compare driving distances.');
+  $('detail-description').textContent=candidate.description||(result?(result.provider==='demo'?'Demo · approximate locations and straight-line distances.':startAccuracy>150?`Approximate start · device accuracy about ${Math.round(startAccuracy)} m.`:''):'Add your places, then organize the trip to compare driving distances.');
+  const credit=$('route-credit');credit.replaceChildren();credit.hidden=kind==='candidate'||!result||result.provider==='demo';
+  if(!credit.hidden){const osm=el('a','© OpenStreetMap');osm.href='https://www.openstreetmap.org/copyright';osm.target='_blank';osm.rel='noopener noreferrer';const routing=el('a','OSRM');routing.href='https://routing.openstreetmap.de/about.html';routing.target='_blank';routing.rel='noopener noreferrer';if(result.provider==='google'){const google=el('a','Google Maps');google.href='https://maps.google.com';google.target='_blank';google.rel='noopener noreferrer';credit.append(google)}else credit.append(osm,document.createTextNode(' · '),routing)}
   setLabel($('detail-source'),'Address source ↗');$('detail-source').hidden=!candidate.source;if(candidate.source)$('detail-source').href=candidate.source;
   const actions=$('detail-actions');actions.replaceChildren();
   if(kind==='candidate'){
@@ -368,7 +370,7 @@ $('clear').onclick=()=>{stops=[];result=null;resetProgress();activePlace=null;tr
 $('optimize').onclick=async()=>{
   if(!config||busy||locating)return;if(!startPlace){error('Capture your current location or choose a starting point first.');return}if(!stops.length){error('Add at least one destination first.');return}
   busy=true;error('');document.querySelectorAll('#plan-panel button,#plan-panel input,#plan-panel select,#plan-panel textarea').forEach(e=>e.disabled=true);$('optimize').textContent='Finding your best order…';
-  try{result=await api('/api/optimize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({start:startPlace,stops,round_trip:$('return').checked,strategy:$('strategy').value})});resetProgress();if(startAccuracy>150)result.notice=`Approximate starting point: device-reported accuracy about ${Math.round(startAccuracy)} m. Distances and visit order depend on this approximate point. `+result.notice;save();render();openPanel(null);showTrip();$('footer-status').textContent='ROAD ESTIMATES · NO LIVE TRAFFIC'}catch(e){error(e.message)}finally{busy=false;document.querySelectorAll('#plan-panel button,#plan-panel input,#plan-panel select,#plan-panel textarea').forEach(e=>e.disabled=false);$('optimize').replaceChildren(document.createTextNode('Organize my trip '),el('span','↗'))}
+  try{result=await api('/api/optimize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({start:startPlace,stops,round_trip:$('return').checked,strategy:$('strategy').value})});resetProgress();if(startAccuracy>150)result.notice=`Approximate starting point: device-reported accuracy about ${Math.round(startAccuracy)} m. Distances and visit order depend on this approximate point. `+result.notice;save();render();openPanel(null);showTrip();$('footer-status').textContent='Abuja, Nigeria'}catch(e){error(e.message)}finally{busy=false;document.querySelectorAll('#plan-panel button,#plan-panel input,#plan-panel select,#plan-panel textarea').forEach(e=>e.disabled=false);$('optimize').replaceChildren(document.createTextNode('Organize my trip '),el('span','↗'))}
 };
 $('download').onclick=()=>{if(!result)return;const text=['SINNOGRAM / YOUR DAY IN ABUJA',`Start: ${startPlace.name}`,`Total: ${km(result.meters)} · about ${Math.ceil(result.seconds/60)} minutes driving`,result.notice,'',...result.legs.map((l,i)=>`${i+1}. ${l.to.name}\nFrom ${l.from.name}\n${km(l.meters)}\nGoogle: ${l.google}\nApple: ${l.apple}`)].join('\n');const url=URL.createObjectURL(new Blob([text],{type:'text/plain'}));const a=el('a');a.href=url;a.download='sinnogram-itinerary.txt';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 $('begin').onclick=$('nav-plan').onclick=()=>{closeMap(false);openPanel('plan')};$('nav-explore').onclick=explore;$('nav-map').onclick=()=>openMap();$('close-plan').onclick=$('close-detail').onclick=explore;

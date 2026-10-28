@@ -568,6 +568,8 @@ func handler(p provider) http.Handler {
 			w.Header().Set("Content-Type", "application/manifest+json")
 		} else if strings.HasSuffix(path, ".svg") {
 			w.Header().Set("Content-Type", "image/svg+xml")
+		} else if strings.HasSuffix(path, ".geojson") {
+			w.Header().Set("Content-Type", "application/geo+json")
 		} else if strings.HasSuffix(path, ".js") {
 			w.Header().Set("Content-Type", "text/javascript")
 		} else if strings.HasSuffix(path, ".css") {
