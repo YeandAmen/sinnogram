@@ -4,6 +4,7 @@ let tripStep=0, tripStarted=false, tripComplete=false;
 let locationRequest=0, capturedFix=null, locating=false;
 let startSource='none', startCapturedAt=null, startAccuracy=null;
 let searchRequest=0, searchController=null;
+let bulkRows=[],bulkLoading=false,bulkRequest=0,bulkPinIndex=-1;
 let map, mapPins, editMarker, pendingPin = null, pinMoved = false, mapOrigin = 'plan';
 let mapTiles, tileMode='direct', tileLoaded=0, tileFailed=0, tileTimer;
 const km = value => `${(value / 1000).toFixed(1)} km`;
@@ -111,6 +112,7 @@ function render(){
   $('trip-stats').hidden=!result;
   if(result){$('total').textContent=km(result.meters);$('time').textContent=result.provider==='demo'?'Demo distance':`≈ ${Math.ceil(result.seconds/60)} min · no live traffic`;$('saving').textContent=result.saved_meters>=0?`${km(result.saved_meters)} less`:`${km(-result.saved_meters)} extra`}
   setLabel($('overview'),result?(tripComplete?'Trip complete · view itinerary ↗':tripStarted?'Continue my trip ↗':'Start my trip ↗'):'Your day, at a glance ↗');
+  if(bulkRows.length)updateBulkApply();
   renderScene();
 }
 function showTrip(){
@@ -221,6 +223,86 @@ setLabel($('office-directory'),'Find the main Abuja offices ↗');
 $('office-directory').onclick=()=>{$('search').value='Abuja bank offices';runPlaceSearch($('search').value)};
 $('search-form').onsubmit=e=>{e.preventDefault();runPlaceSearch($('search').value)};
 $('search').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();$('search-form').requestSubmit($('search-submit'))}};
+function bulkUsable(p){return !!p&&!p.unlocated&&!needsPin(p)&&Number.isFinite(p.lat)&&Number.isFinite(p.lng)&&Math.abs(p.lat)<=90&&Math.abs(p.lng)<=180}
+function bulkChoice(row){return row.choice>=0?row.candidates[row.choice]:null}
+function showBulk(){if(!$('bulk-dialog').open)$('bulk-dialog').showModal()}
+function updateBulkApply(){
+  const included=bulkRows.filter(r=>!r.skipped),ready=included.filter(r=>!r.dirty&&bulkUsable(bulkChoice(r)));
+  const additions=[];for(const row of ready){const p=bulkChoice(row);if(![startPlace,...stops,...additions].some(q=>sameVisit(q,p)))additions.push(p)}
+  const button=$('bulk-apply');button.hidden=!bulkRows.length;
+  button.disabled=bulkLoading||busy||!included.length||ready.length!==included.length||stops.length+additions.length>10;
+  setLabel(button,startPlace?'Add & organize my trip ↗':'Add stops · choose a start ↗');
+  if(bulkRows.length&&!bulkLoading){
+    $('bulk-status').textContent=stops.length+additions.length>10?'This list would take your trip over 10 stops. Skip a stop or remove one from your trip.':`${ready.length} of ${included.length} stops ready. ${included.length-ready.length} ${included.length-ready.length===1?'needs':'need'} a choice, correction or confirmed pin.${bulkRows.some(r=>r.skipped)?' Skipped stops will not be added.':''}`;
+  }
+}
+function renderBulk(){
+  const root=$('bulk-results');root.replaceChildren();
+  bulkRows.forEach((row,i)=>{
+    const card=el('section',undefined,'bulk-stop');if(row.skipped)card.classList.add('bulk-skipped');
+    card.append(el('p',`STOP ${number(i+1)}${row.skipped?' · SKIPPED':''}`,'eyebrow'));
+    const input=el('input');input.id=`bulk-query-${i}`;input.value=row.edited??row.query;input.maxLength=300;input.setAttribute('aria-label',`Place name for stop ${i+1}`);input.disabled=bulkLoading||row.skipped;
+    const retry=el('button','Search again','inline-link');retry.type='button';retry.disabled=bulkLoading||row.skipped;retry.onclick=()=>retryBulkStop(i,input.value);
+    const line=el('div',undefined,'bulk-query-line');line.append(input,retry);card.append(line);
+    const select=el('select');select.setAttribute('aria-label',`Location for stop ${i+1}`);select.disabled=bulkLoading||row.skipped;
+    const empty=el('option','Choose the right place / branch');empty.value='';select.append(empty);
+    row.candidates.forEach((p,j)=>{const option=el('option',p.name);option.value=String(j);select.append(option)});select.value=row.choice>=0?String(row.choice):'';
+    const note=el('p',row.skipped?'This stop will be left out.':row.candidates.length?'Check the address and branch before continuing.':'No local match yet. Try a landmark, district or another name, or place its pin.','micro');
+    input.oninput=()=>{row.dirty=true;row.edited=input.value;note.textContent='Name changed. Search again, or place this stop on the map.';updateBulkApply()};
+    select.onchange=()=>{if(row.dirty)return;row.choice=select.value===''?-1:Number(select.value);renderBulk()};
+    if(row.candidates.length)card.append(select);
+    const choice=bulkChoice(row);
+    if(choice&&!row.skipped){card.append(el('p',choice.name,'bulk-selected-address'));note.textContent=bulkUsable(choice)?'Suggested place selected. Check this is the location you mean.':'This match needs an exact pin before it can join your route.'}
+    card.append(note);
+    const actions=el('div',undefined,'bulk-row-actions');const pin=el('button',bulkUsable(choice)?'Check / adjust pin ↗':'Place / confirm pin ↗','inline-link');pin.type='button';pin.disabled=bulkLoading||row.skipped;pin.onclick=()=>{
+      if(row.dirty){row.query=input.value.trim();row.candidates=[];row.choice=-1;row.dirty=false}
+      if(row.query.length<2){note.textContent='Enter a name for this stop first.';return}
+      bulkPinIndex=i;$('bulk-dialog').close();openMap(bulkChoice(row)||{name:row.query,lat:mapAnchor().lat,lng:mapAnchor().lng,match:'street'},'bulk','bulk');
+    };
+    const skip=el('button',row.skipped?'Keep this stop':'Skip this stop','inline-link');skip.type='button';skip.disabled=bulkLoading;skip.onclick=()=>{row.skipped=!row.skipped;renderBulk()};actions.append(pin,skip);card.append(actions);root.append(card);
+  });
+  $('bulk-analyze').disabled=bulkLoading;updateBulkApply();
+}
+async function runBulk(){
+  if(!config||busy||bulkLoading){$('bulk-status').textContent='Wait for the current request to finish, then try again.';return}
+  const request=++bulkRequest;bulkLoading=true;bulkRows=[];$('bulk-parse-note').textContent='';renderBulk();$('bulk-status').textContent='Separating your stops and looking for places…';
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),30000);
+  try{
+    const data=await api('/api/analyze-stops',{method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,body:JSON.stringify({text:$('bulk-text').value,comma_list:$('bulk-commas').checked})});
+    if(request!==bulkRequest)return;
+    bulkRows=data.items.map(r=>({...r,choice:r.status==='suggested'&&bulkUsable(r.candidates[0])?0:-1,skipped:false,dirty:false}));
+    $('bulk-parse-note').textContent=`Found ${bulkRows.length} stops.${data.duplicates?` Combined ${data.duplicates} repeated ${data.duplicates===1?'entry':'entries'}.`:''} Review the matches below.`;
+  }catch(e){if(request===bulkRequest)$('bulk-status').textContent=e.name==='AbortError'?'This took too long. Try Find my stops again.':e.message}
+  finally{clearTimeout(timer);if(request===bulkRequest){bulkLoading=false;renderBulk();if(bulkRows.length)$('bulk-parse-note').scrollIntoView({block:'start',behavior:'auto'})}}
+}
+async function retryBulkStop(index,query){
+  if(bulkLoading||busy)return;query=query.trim();if(query.length<2||query.length>300){$('bulk-status').textContent='Enter a place name between 2 and 300 characters.';return}
+  const row=bulkRows[index];if(!row)return;if(query!==row.query||row.dirty){row.query=query;row.edited=query;row.candidates=[];row.choice=-1;row.dirty=true}
+  const request=++bulkRequest;let failure='';bulkLoading=true;renderBulk();$('bulk-status').textContent=`Looking for “${query}”…`;
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),30000);
+  try{
+    const data=await api('/api/search?q='+encodeURIComponent(query),{signal:controller.signal});if(request!==bulkRequest)return;
+    bulkRows[index]={query,candidates:data.results,choice:data.results.length===1&&bulkUsable(data.results[0])?0:-1,skipped:false,dirty:false};
+  }catch(e){if(request===bulkRequest)failure=e.name==='AbortError'?'Search timed out. Try this stop again.':e.message}
+  finally{clearTimeout(timer);if(request===bulkRequest){bulkLoading=false;renderBulk();if(failure)$('bulk-status').textContent=failure}}
+}
+function confirmBulkPin(confirmed){
+  const row=bulkRows[bulkPinIndex];if(!row)return;
+  row.candidates.push({...clean(confirmed),match:'manual'});row.choice=row.candidates.length-1;row.dirty=false;row.skipped=false;bulkPinIndex=-1;
+  pendingPin=null;closeMap(false);openPanel('plan');renderBulk();showBulk();
+}
+$('bulk-open').onclick=()=>{showBulk();$('bulk-text').focus()};$('bulk-close').onclick=()=>$('bulk-dialog').close();
+$('bulk-form').onsubmit=e=>{e.preventDefault();runBulk()};
+$('bulk-text').oninput=$('bulk-commas').onchange=()=>{bulkRequest++;bulkLoading=false;bulkRows=[];$('bulk-parse-note').textContent='';renderBulk();$('bulk-status').textContent='List changed. Tap Find my stops to analyze it.'};
+$('bulk-apply').onclick=async()=>{
+  if(busy||bulkLoading)return;if(locating){$('bulk-status').textContent='Wait for your current location capture to finish.';return}
+  const rows=bulkRows.filter(r=>!r.skipped);
+  if(!rows.length||rows.some(r=>r.dirty||!bulkUsable(bulkChoice(r)))){$('bulk-status').textContent='Resolve or explicitly skip every stop before continuing.';return}
+  const additions=[];for(const row of rows){const p=clean(bulkChoice(row));if(![startPlace,...stops,...additions].some(q=>sameVisit(q,p)))additions.push(p)}
+  if(stops.length+additions.length>10){$('bulk-status').textContent='This would exceed 10 stops. Skip a stop or remove one from your trip.';return}
+  stops.push(...additions);$('strategy').value='shortest';bulkRows=[];bulkRequest++;$('bulk-dialog').close();invalidate();renderBulk();openPanel('plan');
+  if(startPlace)await $('optimize').onclick();else{$('location-status').textContent='Your stops are added. Capture your current location or choose a start, then organize the trip.';$('start').focus()}
+};
 function updatePinAvailability(){
   $('confirm-pin').disabled=!!pendingPin&&pendingPin.action!=='inspect'&&(tileLoaded===0||(needsPin(pendingPin.place)&&!pinMoved));
 }
@@ -265,20 +347,22 @@ function openMap(place=null,action='inspect',origin='explore'){
   openPanel(null);$('street-map').hidden=false;$('map-instruction').hidden=false;$('stage-heading').hidden=true;$('scene-hint').hidden=true;$('view-controls').hidden=true;
   $('accept-approx-map').hidden=true;
   $('nav-map').classList.add('active');$('nav-explore').classList.remove('active');mapOrigin=origin;pendingPin=place?{place,action}:null;pinMoved=false;
-  $('map-confirm').hidden=!place;setLabel($('confirm-pin'),action==='start'?'Set starting point ↗':action==='inspect'?'Back to place ↗':'Add confirmed stop ↗');
+  $('map-confirm').hidden=!place;setLabel($('confirm-pin'),action==='start'?'Set starting point ↗':action==='inspect'?'Back to place ↗':action==='bulk'?'Confirm this stop ↗':'Add confirmed stop ↗');
   initMap();map.invalidateSize();mapPins.clearLayers();if(editMarker){map.removeLayer(editMarker);editMarker=null;}
   journeyPoints().forEach(p=>L.circleMarker([p.lat,p.lng],{radius:5,weight:1,color:'#35342c',fillColor:'#f1eee5',fillOpacity:1}).bindTooltip(el('span',title(p))).addTo(mapPins));
   if(place){map.setView([place.lat,place.lng],unlocated?12:needsPin(place)?16:17);setMapPin(L.latLng(place.lat,place.lng));}
   else{const points=journeyPoints();if(points.length>1)map.fitBounds(points.map(p=>[p.lat,p.lng]),{padding:[70,70],maxZoom:15});else{const anchor=points[0]||mapAnchor();map.setView([anchor.lat,anchor.lng],14)}}
+  if(origin==='bulk')$('street-map').scrollIntoView({block:'start',behavior:'auto'});
 }
 function closeMap(restore=true){
   $('street-map').hidden=true;$('map-instruction').hidden=true;$('map-confirm').hidden=true;$('stage-heading').hidden=false;$('scene-hint').hidden=false;$('view-controls').hidden=false;$('nav-map').classList.remove('active');
-  if(restore){openPanel(mapOrigin==='detail'?'detail':mapOrigin==='plan'?'plan':null)}
+  if(restore){openPanel(mapOrigin==='detail'?'detail':mapOrigin==='plan'||mapOrigin==='bulk'?'plan':null);if(mapOrigin==='bulk')showBulk()}
 }
 $('confirm-pin').onclick=()=>{
   if(!pendingPin)return;const {place,action,coords}=pendingPin;if(action==='inspect'){closeMap();return}
   if(tileLoaded===0||(needsPin(place)&&!pinMoved))return;
   const confirmed={name:place.name,lat:coords.lat,lng:coords.lng};
+  if(action==='bulk'){confirmBulkPin(confirmed);return}
   if(action==='start'){const fromGPS=pendingPin.startSource==='gps';if(fromGPS&&pinMoved)confirmed.name=`Chosen starting pin · ${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}`;setStart(confirmed,{source:fromGPS?'gps':'manual',capturedAt:pendingPin.capturedAt||null});$('location-status').textContent=fromGPS?'Starting pin confirmed for this visit. Capture your location again after moving.':'Starting point selected on the map.'}else if(!addStop(confirmed))return;
   pendingPin=null;closeMap(false);openPanel('plan');$('matches').replaceChildren();$('search-status').classList.remove('search-failure');$('search-status').textContent='Pin confirmed. Location added to your day.';$('search').value='';
 };

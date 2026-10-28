@@ -6,6 +6,7 @@ async function app(reverse,search=async()=>({ok:true,json:async()=>({query:"",re
   constructor(){this.options=[];this.children=[];this.value='';this.scrolls=0;this.attributes={};this.classList={toggle(){},add(){},remove(){}}}
   append(...nodes){this.children.push(...nodes);this.options.push(...nodes)}
   replaceChildren(...nodes){this.children=[];this.append(...nodes)}
+  showModal(){this.open=true} close(){this.open=false}
   setAttribute(k,v){this.attributes[k]=v} focus(){} scrollIntoView(){this.scrolls++} requestSubmit(button){this.onsubmit({preventDefault(){},submitter:button})} querySelector(){return new Element()}
  }
  const elements=new Map();const $=id=>{if(!elements.has(id))elements.set(id,new Element());return elements.get(id)};
@@ -16,6 +17,7 @@ async function app(reverse,search=async()=>({ok:true,json:async()=>({query:"",re
   navigator:{geolocation:{getCurrentPosition(a,b,c){captures++;success=a;failure=b;options=c}}},
   sinnogramScene:{set(){},zoomBy(){},reset(){}},
   fetch:async(path,init)=>{
+   if(path==='/api/analyze-stops'&&settings.analyze)return settings.analyze(path,init);
    if(path==='/api/optimize'&&settings.optimize)return settings.optimize(path,init);
    if(path==='/api/reverse')return reverse(path,init);
    if(path.startsWith('/api/search?'))return search(path,init);

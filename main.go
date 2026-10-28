@@ -443,6 +443,42 @@ func handler(p provider) http.Handler {
 		}
 		jsonOut(w, 200, label)
 	})
+	mux.HandleFunc("POST /api/analyze-stops", func(w http.ResponseWriter, r *http.Request) {
+		if strings.Split(r.Header.Get("Content-Type"), ";")[0] != "application/json" {
+			fail(w, 415, "send application/json")
+			return
+		}
+		if origin := r.Header.Get("Origin"); origin != "" {
+			u, e := url.Parse(origin)
+			if e != nil || u.Host != r.Host {
+				fail(w, 403, "cross-origin requests are not allowed")
+				return
+			}
+		}
+		var input struct {
+			Text      string `json:"text"`
+			CommaList bool   `json:"comma_list"`
+		}
+		d := json.NewDecoder(http.MaxBytesReader(w, r.Body, 32000))
+		d.DisallowUnknownFields()
+		if d.Decode(&input) != nil || d.Decode(&struct{}{}) != io.EOF {
+			fail(w, 400, "send a valid stops list")
+			return
+		}
+		select {
+		case gate <- struct{}{}:
+			defer func() { <-gate }()
+		default:
+			fail(w, 429, "please wait for the current request")
+			return
+		}
+		out, err := analyzeBulk(input.Text, input.CommaList)
+		if err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+		jsonOut(w, 200, out)
+	})
 	mux.HandleFunc("GET /api/search", func(w http.ResponseWriter, r *http.Request) {
 		q := strings.TrimSpace(r.URL.Query().Get("q"))
 		if len(q) < 2 || len(q) > 300 {
