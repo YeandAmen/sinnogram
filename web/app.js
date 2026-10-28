@@ -186,10 +186,10 @@ async function restoreLiveLocation(){
 restoreLiveLocation();
 renderLiveLocation();
 function startPromptCard(){
-  const card=el('button',undefined,'timeline-card'),image=el('span',undefined,'timeline-image'),copy=el('div');image.innerHTML=sketch(3);
-  copy.append(el('span','START WITH WHERE YOU ARE','date'),el('h3',startPlace?title(startPlace):'Set your starting point'),el('p',startSource==='gps'?`Device capture at ${sinnogramLocation.captureTime({capturedAt:startCapturedAt})}.`:startSource==='saved'?'Saved fixed starting point.':'Capture your location or choose a place.'));
-  card.append(image,copy);card.onclick=()=>openPanel('plan');return card;
+  const card=el('button',startPlace?'Continue planning ↗':'Set your starting point ↗','start-entry');
+  card.onclick=()=>{openPanel('plan');$('start').focus()};return card;
 }
+
 function addStop(place){
   if(busy){error("Please wait for the current route calculation.");return false}
   if(stops.length>=10){openPanel('plan');error('You can add up to 10 stops.');return false}
@@ -234,11 +234,10 @@ function render(){
   $('optimize').disabled=busy||locating||!startPlace;$('start-required').hidden=!!startPlace;
   $('stop-count').textContent=`${number(stops.length)} / 10`;
   renderStopList();
-  const timeline=$('timeline');timeline.replaceChildren();
+  const timeline=$('timeline');timeline.replaceChildren();timeline.classList.toggle('empty-start',!stops.length);
   const points=startPlace?journeyPoints():[null,...stops];
   if(stops.length){points.forEach((p,i)=>{if(!p){timeline.append(startPromptCard());return}const card=el('button',undefined,'timeline-card');card.setAttribute('data-visit',String(i));if(sameVisit(p,activePlace))card.classList.add('selected');const image=el('span',undefined,'timeline-image');image.innerHTML=sketch(i+1);const copy=el('div');copy.append(el('span',i===0?'STARTING POINT':`STOP ${number(i)}${result&&i===points.length-1&&sameVisit(p,startPlace)?' · BACK HOME':''}`,'date'),el('h3',title(p)));copy.append(el('p',i===0?'Your day begins here.':result?`${km(result.legs[i-1].meters)} · ${Math.ceil(result.legs[i-1].seconds/60)} min from last stop`:p.name.split(',').slice(1,3).join(',')||'Ready to find its place.'));card.append(image,copy);card.onclick=()=>showStop(p,i-1);timeline.append(card)})}
   else{timeline.append(startPromptCard())}
-  if(stops.length<10){const card=el('button',undefined,'timeline-card add-card');const copy=el('div');copy.append(el('span','WHAT’S YOUR NEXT STOP?','date'),el('h3','Add a place to your day'),el('p','Search an address or set a map pin.'));card.append(el('span','+','add-sign'),copy);card.onclick=()=>{openPanel('plan');$('search').focus()};timeline.append(card)}
   $('trip-stats').hidden=!result;
   updateTripStats();
   setLabel($('overview'),result?'View route & itinerary ↗':'Your day, at a glance ↗');

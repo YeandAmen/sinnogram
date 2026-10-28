@@ -184,3 +184,9 @@
 #plan-panel .stop-entry-actions .inline-link{font-size:12px;min-height:44px;padding:12px 0;white-space:nowrap}
 #plan-panel #locate{display:block;margin-top:8px}
 #plan-panel #choose-start-map,#plan-panel #review-location{display:block;margin-top:4px}
+
+/* One quiet entry point in the empty journey area. */
+.timeline.empty-start{align-items:center;min-height:140px;padding-top:0}
+.start-entry{display:inline-flex;align-items:center;gap:22px;flex:none;min-height:44px;padding:10px 0;border-bottom:1px solid var(--ink);font-size:15px;line-height:1.4;text-align:left}
+.start-entry .ui-icon{width:16px;height:16px}.start-entry:hover{color:#7b4d36;border-color:currentColor}
+@media(max-width:700px){.timeline.empty-start{min-height:112px}.start-entry{font-size:14px}}
