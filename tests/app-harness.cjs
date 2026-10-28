@@ -10,7 +10,7 @@ async function app(reverse,search=async()=>({ok:true,json:async()=>({query:"",re
   setAttribute(k,v){this.attributes[k]=v} focus(){} scrollIntoView(){this.scrolls++} requestSubmit(button){this.onsubmit({preventDefault(){},submitter:button})} querySelector(){return new Element()}
  }
   const elements=new Map();const $=id=>{if(!elements.has(id))elements.set(id,new Element());return elements.get(id)};
-  for(const id of ['street-map','map-instruction','map-confirm','plan-panel','detail-panel','live-map-controls'])$(id).hidden=true;
+  for(const id of ['review-location','street-map','map-instruction','map-confirm','plan-panel','detail-panel','live-map-controls'])$(id).hidden=true;
  const storage=settings.storage||new Map();
   let success, failure, options,captures=0,watchCount=0;const watches=new Map(),events={};
   const geolocation={getCurrentPosition(a,b,c){captures++;success=a;failure=b;options=c},watchPosition(a,b,c){const id=watchCount++;watches.set(id,{success:a,failure:b,options:c});return id},clearWatch:id=>watches.delete(id)};

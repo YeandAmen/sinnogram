@@ -37,7 +37,7 @@ test('refresh migrates an hours-old legacy Wuse II origin without losing destina
  const storage=new Map([['axis-trip-v1',JSON.stringify({saved_at:Date.now()-3*60*60*1000,provider:'osm',start:previous,stops:[savedStop],strategy:'shortest',result:{legs:[{from:previous,to:savedStop}]}})]]);
  const a=await app(reverseLabel,undefined,{storage});
  assert.equal(a.start(),null);assert.equal(a.$('start').value,'');assert.equal(a.$('optimize').disabled,true);
- assert.equal(vm.runInContext('result',a.context),null);assert.match(a.$('location-status').textContent,/saved stops are restored/);
+ assert.equal(vm.runInContext('result',a.context),null);assert.equal(a.$('location-status').textContent,'');
  const migrated=JSON.parse(storage.get('axis-trip-v1'));assert.equal(migrated.start,null);assert.equal(migrated.result,null);assert.equal(migrated.stops[0].name,savedStop.name);
 });
 test('GPS origins and old routes are not persisted across refresh, while stops remain',async()=>{
@@ -52,12 +52,12 @@ test('each location click captures anew and a failed retry clears the previous G
  assert.match(a.$('locate').children.join(''),/Update my current location/);
  const second=a.capture();assert.equal(a.start(),null);assert.equal(a.$('optimize').disabled,true);
  await second.success({timestamp:Date.now(),coords:{latitude:9.1,longitude:7.5,accuracy:10}});
- assert.equal(a.start().lat,9.1);assert.equal(a.start().lng,7.5);assert.equal(a.captures(),2);assert.match(a.$('location-status').textContent,/captured at/);
+ assert.equal(a.start().lat,9.1);assert.equal(a.start().lng,7.5);assert.equal(a.captures(),2);assert.match(a.$('location-status').textContent,/Location ready/);
  a.capture().failure({code:1});assert.equal(a.start(),null);assert.equal(a.$('optimize').disabled,true);assert.equal(a.$('locate').disabled,false);
 });
 test('explicitly selected fixed starts may restore with a saved-place label',async()=>{
  const a=await app(reverseLabel);vm.runInContext("setStart({name:'Chosen head office',lat:9.03,lng:7.47})",a.context);
- const refreshed=await app(reverseLabel,undefined,{storage:a.storage});assert.equal(refreshed.start().name,'Chosen head office');assert.equal(vm.runInContext('startSource',refreshed.context),'saved');assert.match(refreshed.$('location-status').textContent,/Saved fixed starting point/);
+ const refreshed=await app(reverseLabel,undefined,{storage:a.storage});assert.equal(refreshed.start().name,'Chosen head office');assert.equal(vm.runInContext('startSource',refreshed.context),'saved');assert.match(refreshed.$('location-status').textContent,/Saved starting point/);
 });
 test('unavailable precision fix retries fresh standard accuracy and keeps measured coordinates',async()=>{
  const a=await app(reverseLabel);a.capture().failure({code:2});
@@ -105,14 +105,14 @@ test('street lookup times out without losing a usable device fix',async()=>{
  const pending=a.capture().success(fix(15));await tick();
  assert.equal(delay,8000);assert.equal(a.$('locate').disabled,false);assert.equal(a.start().lat,9.0811598);
  expire();await pending;assert.equal(cleared,true);assert.equal(a.$('optimize').disabled,false);
- assert.match(a.$('location-status').textContent,/lookup unavailable; your captured coordinates are set/);
+ assert.match(a.$('location-status').textContent,/lookup unavailable/);
 });
 test('a failed decorative canvas cannot stop location capture or erase its feedback',async()=>{
  const a=await app(reverseLabel);
  vm.runInContext("sinnogramScene.set=()=>{throw Error('Canvas unavailable')}",a.context);
  const capture=a.capture();assert.match(a.$('location-status').textContent,/Capturing a fresh/);
  await capture.success(fix(12));assert.equal(a.start().lat,9.0811598);
- assert.match(a.$('location-status').textContent,/captured at/);
+ assert.match(a.$('location-status').textContent,/Location ready/);
 });
 test('a synchronous browser exception produces visible feedback and an enabled retry',async()=>{
  const a=await app(reverseLabel);
@@ -141,4 +141,12 @@ test('a stale approximate fix cannot be accepted later',async()=>{
  const a=await app(reverseLabel);await a.capture().success(fix(912));
  vm.runInContext('capturedFix.capturedAt=Date.now()-120000',a.context);
  a.$('accept-approx').onclick();assert.equal(a.start(),null);assert.match(a.$('location-status').textContent,/old/);
+});
+
+test('GPS capture shows one map action and returns to manual choice after failure',async()=>{
+ const a=await app(reverseLabel);assert.equal(a.$('choose-start-map').hidden,false);
+ await a.capture().success(fix(12));
+ assert.equal(a.$('review-location').hidden,false);assert.equal(a.$('choose-start-map').hidden,true);
+ a.capture().failure({code:1});
+ assert.equal(a.$('review-location').hidden,true);assert.equal(a.$('choose-start-map').hidden,false);
 });

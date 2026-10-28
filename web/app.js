@@ -86,7 +86,7 @@ function clearStart(){
   clearCaptureRecovery();locationRequest++;locating=false;$('locate').disabled=busy;startPlace=null;startSource='none';startCapturedAt=null;capturedFix=null;activePlace=null;
   startAccuracy=null;$('accept-approx').hidden=true;$('accept-approx-map').hidden=true;
   for(const option of $('start').options){if(option.value==='custom'){option.hidden=true;option.disabled=true}}
-  $('start').value='';$('review-location').hidden=true;$('location-status').textContent='Choose a starting place or capture a fresh device location.';
+  $('start').value='';$('review-location').hidden=true;$('location-status').textContent='';
   setLabel($('locate'),'◎ Use my current location');invalidate();
 }
 // This fallback centres the street map only; it never becomes a routing origin.
@@ -225,7 +225,11 @@ function renderStopList(){
   if(!stops.length)list.append(el('p','No destinations yet. Search above or place a pin.','micro'));
   stops.forEach((p,i)=>{const row=el('div',undefined,'stop');const name=el('button',title(p),'name');name.onclick=()=>showStop(p,i);const remove=el('button','×','remove');remove.setAttribute('aria-label',`Remove ${title(p)}`);remove.onclick=()=>{delete stopMinutes[`${p.lat},${p.lng},${p.name}`];stops.splice(i,1);invalidate()};const dwell=el('input');dwell.type='number';dwell.min='0';dwell.max='1440';dwell.value=minutesFor(p);dwell.className='stop-minutes';dwell.setAttribute('aria-label','Minutes at '+title(p));dwell.oninput=()=>{stopMinutes[`${p.lat},${p.lng},${p.name}`]=Math.max(0,Math.min(1440,Number(dwell.value)||0));save();updateTripStats()};dwell.onchange=()=>{dwell.value=minutesFor(p)};const duration=el('label',undefined,'duration-label');duration.append(dwell,el('span','min'));row.append(el('span',number(i+1)),name,duration,remove);if(pinIssue===i+1){row.classList.add('needs-entrance');row.append(entranceAction(i+1,p))}list.append(row)});
 }
+function syncStartActions(){
+  $('choose-start-map').hidden=!$('review-location').hidden||locating;
+}
 function render(){
+  syncStartActions();
   if(!config)return;
   $('optimize').disabled=busy||locating||!startPlace;$('start-required').hidden=!!startPlace;
   $('stop-count').textContent=`${number(stops.length)} / 10`;
@@ -472,7 +476,7 @@ function showCityRoute(fit=true){
   // Headless tests and unavailable Leaflet still retain the usable itinerary.
   if(typeof L==='undefined'){if(fit)showTrip();return}
   openPanel(null);routeMode=true;pendingPin=null;mapOrigin='route';mapMode='route';if(fit)liveFollow=false;
-  $('experience').classList.add('route-view');$('street-map').hidden=false;$('stage-heading').hidden=true;$('view-controls').hidden=true;$('map-instruction').hidden=true;$('map-confirm').hidden=true;$('route-banner').hidden=false;
+  $('experience').classList.add('route-view');$('street-map').hidden=false;$('stage-heading').hidden=true;$('map-instruction').hidden=true;$('map-confirm').hidden=true;$('route-banner').hidden=false;
   $('nav-map').classList.add('active');$('nav-explore').classList.remove('active');
   initMap();if(editMarker){map.removeLayer(editMarker);editMarker=null}map.invalidateSize();drawCityRoute(fit);
   renderLiveLocation();
@@ -595,7 +599,7 @@ function openMap(place=null,action='inspect',origin='explore'){
   routeMode=false;$('experience').classList.remove('route-view');$('route-banner').hidden=true;
   const unlocated=!!place?.unlocated;
   if(unlocated)place={...place,lat:mapAnchor().lat,lng:mapAnchor().lng,match:'street',unlocated:false};
-  openPanel(null);$('street-map').hidden=false;$('map-instruction').hidden=false;$('stage-heading').hidden=true;$('view-controls').hidden=true;
+  openPanel(null);$('street-map').hidden=false;$('map-instruction').hidden=false;$('stage-heading').hidden=true;
   $('accept-approx-map').hidden=true;
   $('nav-map').classList.add('active');$('nav-explore').classList.remove('active');mapOrigin=origin;pendingPin=place?{place,action}:null;pinMoved=false;
   liveFollow=action==='live';
@@ -610,7 +614,7 @@ function openMap(place=null,action='inspect',origin='explore'){
 }
 function closeMap(restore=true){
   routeMode=false;$('experience').classList.remove('route-view');$('route-banner').hidden=true;
-  $('street-map').hidden=true;$('map-instruction').hidden=true;$('map-confirm').hidden=true;$('stage-heading').hidden=false;$('view-controls').hidden=false;$('nav-map').classList.remove('active');
+  $('street-map').hidden=true;$('map-instruction').hidden=true;$('map-confirm').hidden=true;$('stage-heading').hidden=false;$('nav-map').classList.remove('active');
   if(restore){openPanel(mapOrigin==='detail'?'detail':mapOrigin==='plan'||mapOrigin==='bulk'?'plan':null);if(mapOrigin==='bulk')showBulk()}
   renderLiveLocation();
 }
@@ -652,7 +656,7 @@ function acceptApproximateLocation(){
   const fix=capturedFix;
   try{sinnogramLocation.readFix({timestamp:fix.capturedAt,coords:{latitude:fix.lat,longitude:fix.lng,accuracy:fix.accuracy}})}catch(e){$('location-status').textContent='That captured location is old. Tap Use my current location to capture it again.';closeMap(false);openPanel('plan');return}
   setStart({name:`Approximate starting point · ${sinnogramLocation.coordinates(fix)}`,lat:fix.lat,lng:fix.lng},{source:'gps',capturedAt:fix.capturedAt,accuracy:fix.accuracy});
-  capturedFix=fix;$('review-location').hidden=false;
+  capturedFix=fix;$('review-location').hidden=false;syncStartActions();
   $('location-status').textContent=`Approximate starting point selected · device-reported accuracy about ${Math.round(fix.accuracy)} m. Trip distances may differ from your actual starting point. You can adjust it on the map or capture again.`;
   closeMap(false);openPanel('plan');
 }
@@ -664,7 +668,7 @@ function captureLocation(){
   if(!window.isSecureContext){$('location-status').textContent='Location needs a secure HTTPS connection. Open the live Sinnogram link or choose a map pin.';return}
   if(!navigator.geolocation){$('location-status').textContent='This browser does not support location capture. Choose a starting pin on the map.';return}
   const request=++locationRequest,b=$('locate');locating=true;b.disabled=true;setLabel(b,'◎ Capturing location…');$('optimize').disabled=true;
-  const finish=()=>{locating=false;b.disabled=busy;$('optimize').disabled=busy||!startPlace;setLabel(b,startSource==='gps'?'◎ Update my current location':'◎ Use my current location')};capturedFix=null;$('review-location').hidden=true;$('location-status').textContent='Capturing a fresh device location…';
+  const finish=()=>{locating=false;b.disabled=busy;$('optimize').disabled=busy||!startPlace;setLabel(b,startSource==='gps'?'◎ Update my current location':'◎ Use my current location');syncStartActions()};capturedFix=null;$('review-location').hidden=true;$('location-status').textContent='Capturing a fresh device location…';
   const waitForFresh=()=>{
     if(captureRecovery)return;
     $('location-status').textContent='Your device returned an older position. Waiting for a fresh location…';
@@ -701,7 +705,7 @@ function captureLocation(){
     const coordinateName=`GPS · ${sinnogramLocation.coordinates(fix)}`;
     setStart({name:coordinateName,lat:fix.lat,lng:fix.lng},{source:'gps',capturedAt:fix.capturedAt});capturedFix=fix;$('review-location').hidden=false;
     const currentRequest=locationRequest;
-    $('location-status').textContent=`Captured at ${sinnogramLocation.captureTime(fix)} · ${sinnogramLocation.coordinates(fix)} · accuracy about ${Math.round(fix.accuracy)} m. Finding the nearby street…`;
+    $('location-status').textContent=`Location captured · about ${Math.round(fix.accuracy)} m accuracy.`;
     // The measured point is ready. An optional street name must not lock capture or routing.
     finish();
     const controller=new AbortController(),lookupTimer=setTimeout(()=>controller.abort(),8000);
@@ -714,8 +718,8 @@ function captureLocation(){
       const option=[...$('start').options].find(o=>o.value==='custom');if(option)option.textContent=startPlace.name;
       if(result)for(const leg of result.legs){if(sameVisit(leg.from,previous))leg.from=startPlace;if(sameVisit(leg.to,previous))leg.to=startPlace}
       capturedFix=fix;$('review-location').hidden=false;save();render();
-      $('location-status').textContent=`${label.name} · captured at ${sinnogramLocation.captureTime(fix)} · ${sinnogramLocation.coordinates(fix)} · accuracy about ${Math.round(fix.accuracy)} m. Routing uses the captured coordinates; the street name is approximate.`;
-    }catch(e){if(locationRequest===currentRequest)$('location-status').textContent=`Captured at ${sinnogramLocation.captureTime(fix)} · ${sinnogramLocation.coordinates(fix)} · accuracy about ${Math.round(fix.accuracy)} m. Street-name lookup unavailable; your captured coordinates are set.`}
+      $('location-status').textContent=`Location ready · about ${Math.round(fix.accuracy)} m accuracy.`;
+    }catch(e){if(locationRequest===currentRequest)$('location-status').textContent=`Location ready · about ${Math.round(fix.accuracy)} m accuracy. Street-name lookup unavailable.`}
     finally{clearTimeout(lookupTimer)}
   };
   const attempt=(retry=false)=>navigator.geolocation.getCurrentPosition(pos=>receive(pos,retry).catch(locationCaptureFailed),err=>{
@@ -756,13 +760,13 @@ $('begin').onclick=$('nav-plan').onclick=()=>{closeMap(false);openPanel('plan')}
 $('overview').onclick=()=>result?showCityRoute():showTrip();
 $('route-continue').onclick=showTrip;$('route-fit').onclick=()=>{liveFollow=false;drawCityRoute(true);renderLiveLocation()};
 $('home-example').onclick=async()=>{const button=$('home-example');if(busy)return;button.disabled=true;button.textContent='Planning example…';try{$('example').onclick();await $('optimize').onclick()}finally{button.disabled=false;button.textContent='Try an example'}};
-$('zoom-in').onclick=()=>sinnogramScene.zoomBy(.15);$('zoom-out').onclick=()=>sinnogramScene.zoomBy(-.15);
+
 if(typeof sinnogramScene!=='undefined')sinnogramScene.onSelect=p=>{const index=stops.findIndex(v=>same(v,p));if(index>=0||same(startPlace,p))showStop(p,index);else showCandidate({...p,match:'place',description:'An example district/location in Abuja. Confirm the exact entrance pin before adding it.'})};
 if(typeof sinnogramScene!=='undefined')sinnogramScene.onLocate=showLiveLocation;
 $('about').onclick=()=>$('about-dialog').showModal();$('close-about').onclick=()=>$('about-dialog').close();
 (async()=>{
   try{
-    config=await api('/api/config');startPlace=null;$('location-status').textContent='Capture your current location or choose a starting place.';const placeholder=el('option','Capture your location or choose a start');placeholder.value='';$('start').append(placeholder);$('start').value='';config.samples.forEach((p,i)=>{const o=el('option',p.name);o.value=i;$('start').append(o)});
+    config=await api('/api/config');startPlace=null;$('location-status').textContent='';const placeholder=el('option','Capture your location or choose a start');placeholder.value='';$('start').append(placeholder);$('start').value='';config.samples.forEach((p,i)=>{const o=el('option',p.name);o.value=i;$('start').append(o)});
     $('provider-label').textContent=config.provider==='osm'?'· OSM / ROADS':config.provider==='google'?'· GOOGLE / ROADS':'· DEMO';
     let stored;try{stored=JSON.parse(localStorage.getItem('axis-trip-v1'))}catch{}
     if(stored&&Date.now()-stored.saved_at>=0&&Date.now()-stored.saved_at<86400000&&stored.provider===config.provider&&Array.isArray(stored.stops)&&stored.stops.length<=10){
@@ -775,9 +779,9 @@ $('about').onclick=()=>$('about-dialog').showModal();$('close-about').onclick=()
         const option=el('option','Saved · '+startPlace.name);option.value='custom';$('start').append(option);$('start').value='custom';
         result=stored.result?.legs?.length&&same(stored.result.legs[0].from,startPlace)?stored.result:null;
         if(result&&Number.isInteger(stored.progress?.step)&&stored.progress.step>=0&&stored.progress.step<result.legs.length){tripStep=stored.progress.step;tripStarted=stored.progress.started===true;tripComplete=tripStarted&&tripStep===result.legs.length-1&&stored.progress.complete===true}
-        $('location-status').textContent='Saved fixed starting point. Use your current location to capture where you are now.';
+        $('location-status').textContent='Saved starting point.';
       }else{
-        $('location-status').textContent=stops.length?'Your saved stops are restored. Capture a fresh location or choose a starting point.':'Capture a fresh location or choose a starting point.';
+        $('location-status').textContent='';
       }
       save();
     }
