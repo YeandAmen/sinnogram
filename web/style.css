@@ -133,3 +133,15 @@
 .stage:has(#map-instruction:not([hidden])) .leaflet-top{top:130px}@media(max-width:700px){.stage:has(#map-instruction:not([hidden])) .leaflet-top{top:155px}}
 #error.pin-issue{color:var(--ink);background:var(--soft);padding:12px 14px;font-size:12px;line-height:1.5;margin-top:12px}#error.pin-issue strong{font-weight:500}#error.pin-issue p{margin-top:5px}#error.pin-issue button{min-height:40px;padding:8px 0 0;color:var(--ink);text-decoration:underline;text-underline-offset:3px}
 .location-status:empty{display:none}
+/* Keep the phone map unobstructed: instructions and actions have their own rows. */
+@media(max-width:700px){
+ .stage:has(#street-map:not([hidden])){display:flex;flex-direction:column;height:auto;min-height:0;overflow:visible}
+ .stage:has(#street-map:not([hidden])) #scene{display:none}
+ .stage:has(#street-map:not([hidden])) #street-map{position:relative;inset:auto;order:1;flex:none;width:100%;height:clamp(360px,55svh,540px);min-height:360px}
+ .stage:has(#street-map:not([hidden])) .map-instruction,
+ .stage:has(#street-map:not([hidden])) .route-banner{position:relative;inset:auto;order:0;width:auto;max-width:none;margin:0 15px 12px;padding:14px 40px 14px 15px;box-shadow:none}
+ .stage:has(#street-map:not([hidden])) .map-confirm{position:relative;inset:auto;transform:none;order:2;width:auto;min-width:0;margin:12px 15px 0;padding:15px;box-shadow:none}
+ .stage:has(#street-map:not([hidden])) .live-map-controls{position:relative;inset:auto;order:3;width:auto;max-width:none;margin:12px 15px 16px;padding:12px 15px;box-shadow:none}
+ .stage:has(#street-map:not([hidden])) .live-map-controls>div{flex-wrap:wrap;gap:4px 16px}
+ .stage:has(#street-map:not([hidden])) .leaflet-top{top:12px}
+}
