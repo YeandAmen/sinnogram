@@ -92,3 +92,5 @@
 /* Quiet globe controls, with room for each touch target. */
 .view-controls{left:34px;right:34px;bottom:8px;justify-content:space-between;pointer-events:none}.view-controls button{width:44px;height:44px;pointer-events:auto;font-size:25px}.journey-caption{justify-content:flex-end;height:auto;min-height:0}.journey-caption:has(#trip-stats[hidden]){display:none}.journey-caption:has(#trip-stats:not([hidden])){min-height:30px}
 @media(max-width:700px){.view-controls{position:relative;inset:auto;align-self:stretch;margin:4px 16px 12px;justify-content:space-between}.journey-caption:has(#trip-stats:not([hidden])){min-height:32px}}
+
+.bulk-entry strong .ui-icon{width:18px;height:18px;margin-left:4px}
