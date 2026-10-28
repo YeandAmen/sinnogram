@@ -711,6 +711,14 @@ func handler(p provider) http.Handler {
 		w.Write(b)
 	})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Host == "axis-abuja-test.vercel.app" {
+			target := *r.URL
+			target.Scheme = "https"
+			target.Host = "sinnogram.vercel.app"
+			target.User = nil
+			http.Redirect(w, r, target.String(), http.StatusPermanentRedirect)
+			return
+		}
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		w.Header().Set("Permissions-Policy", "geolocation=(self)")
