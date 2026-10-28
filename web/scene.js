@@ -74,9 +74,6 @@
     zoomBy(value){if(ready)globe.easeTo({zoom:Math.max(-.4,Math.min(6,globe.getZoom()+value*3)),duration:still?0:350})},
     reset,onSelect:null
   };
-  const toggle=document.getElementById('toggle-orbit');
-  function orbitLabel(){toggle.textContent=orbitPaused?'Play orbit':'Pause orbit';toggle.setAttribute('aria-pressed',String(orbitPaused))}
-  toggle.onclick=()=>{orbitPaused=!orbitPaused;pauseUntil=0;orbitLabel()};orbitLabel();
   home.onclick=()=>{pauseOrbit();lastSelection='';reset()};
   for(const event of ['pointerdown','pointermove','wheel','keydown','focusin'])root.addEventListener(event,pauseOrbit,{passive:true});
   if(typeof maplibregl==='undefined'){staticFallback();return}

@@ -94,7 +94,6 @@ function renderScene(){
   const selected=activePlace&&!activePlace.unlocated?points.findIndex(p=>same(p,activePlace)):-1;
   // A canvas failure must never interrupt trip editing or device capture.
   try{if(typeof sinnogramScene!=='undefined')sinnogramScene.set(points,hasTrip?actual:[],selected)}catch(e){console.warn('The decorative scene could not redraw.')}
-  $('scene-hint').innerHTML='<span class="globe-desktop-hint">Drag to turn the globe · Scroll to zoom</span><span class="globe-mobile-hint">Use two fingers to turn · Pinch to zoom</span><br><span>Explore the world. Plan your day in Abuja.</span>';
 }
 function render(){
   if(!config)return;
@@ -108,7 +107,6 @@ function render(){
   if(stops.length){points.forEach((p,i)=>{if(!p){timeline.append(startPromptCard());return}const card=el('button',undefined,'timeline-card');if(sameVisit(p,activePlace))card.classList.add('selected');const image=el('span',undefined,'timeline-image');image.innerHTML=sketch(i+1);const copy=el('div');copy.append(el('span',i===0?'STARTING POINT':`STOP ${number(i)}${result&&i===points.length-1&&sameVisit(p,startPlace)?' · BACK HOME':''}`,'date'),el('h3',title(p)));copy.append(el('p',i===0?'Your day begins here.':result?`${km(result.legs[i-1].meters)} · ${Math.ceil(result.legs[i-1].seconds/60)} min from last stop`:p.name.split(',').slice(1,3).join(',')||'Ready to find its place.'));card.append(image,copy);card.onclick=()=>showStop(p,i-1);timeline.append(card)})}
   else{timeline.append(startPromptCard())}
   if(stops.length<10){const card=el('button',undefined,'timeline-card add-card');const copy=el('div');copy.append(el('span','WHAT’S YOUR NEXT STOP?','date'),el('h3','Add a place to your day'),el('p','Search an address or set a map pin.'));card.append(el('span','+','add-sign'),copy);card.onclick=()=>{openPanel('plan');$('search').focus()};timeline.append(card)}
-  $('journey-label').textContent=result?($('strategy').value==='input'?'YOUR DAY · IN YOUR CHOSEN ORDER':'YOUR DAY, IN A BETTER ORDER'):stops.length?'YOUR PLACES · READY TO ORGANIZE':'A DAY, WAITING TO TAKE SHAPE';
   $('trip-stats').hidden=!result;
   if(result){$('total').textContent=km(result.meters);$('time').textContent=result.provider==='demo'?'Demo distance':`≈ ${Math.ceil(result.seconds/60)} min · no live traffic`;$('saving').textContent=result.saved_meters>=0?`${km(result.saved_meters)} less`:`${km(-result.saved_meters)} extra`}
   setLabel($('overview'),result?(tripComplete?'Trip complete · view itinerary ↗':tripStarted?'Continue my trip ↗':'Start my trip ↗'):'Your day, at a glance ↗');
@@ -344,7 +342,7 @@ function setMapPin(latlng,moved=false){
 function openMap(place=null,action='inspect',origin='explore'){
   const unlocated=!!place?.unlocated;
   if(unlocated)place={...place,lat:mapAnchor().lat,lng:mapAnchor().lng,match:'street',unlocated:false};
-  openPanel(null);$('street-map').hidden=false;$('map-instruction').hidden=false;$('stage-heading').hidden=true;$('scene-hint').hidden=true;$('view-controls').hidden=true;
+  openPanel(null);$('street-map').hidden=false;$('map-instruction').hidden=false;$('stage-heading').hidden=true;$('view-controls').hidden=true;
   $('accept-approx-map').hidden=true;
   $('nav-map').classList.add('active');$('nav-explore').classList.remove('active');mapOrigin=origin;pendingPin=place?{place,action}:null;pinMoved=false;
   $('map-confirm').hidden=!place;setLabel($('confirm-pin'),action==='start'?'Set starting point ↗':action==='inspect'?'Back to place ↗':action==='bulk'?'Confirm this stop ↗':'Add confirmed stop ↗');
@@ -355,7 +353,7 @@ function openMap(place=null,action='inspect',origin='explore'){
   if(origin==='bulk')$('street-map').scrollIntoView({block:'start',behavior:'auto'});
 }
 function closeMap(restore=true){
-  $('street-map').hidden=true;$('map-instruction').hidden=true;$('map-confirm').hidden=true;$('stage-heading').hidden=false;$('scene-hint').hidden=false;$('view-controls').hidden=false;$('nav-map').classList.remove('active');
+  $('street-map').hidden=true;$('map-instruction').hidden=true;$('map-confirm').hidden=true;$('stage-heading').hidden=false;$('view-controls').hidden=false;$('nav-map').classList.remove('active');
   if(restore){openPanel(mapOrigin==='detail'?'detail':mapOrigin==='plan'||mapOrigin==='bulk'?'plan':null);if(mapOrigin==='bulk')showBulk()}
 }
 $('confirm-pin').onclick=()=>{
@@ -459,7 +457,7 @@ $('optimize').onclick=async()=>{
 $('download').onclick=()=>{if(!result)return;const text=['SINNOGRAM / YOUR DAY IN ABUJA',`Start: ${startPlace.name}`,`Total: ${km(result.meters)} · about ${Math.ceil(result.seconds/60)} minutes driving`,result.notice,'',...result.legs.map((l,i)=>`${i+1}. ${l.to.name}\nFrom ${l.from.name}\n${km(l.meters)}\nGoogle: ${l.google}\nApple: ${l.apple}`)].join('\n');const url=URL.createObjectURL(new Blob([text],{type:'text/plain'}));const a=el('a');a.href=url;a.download='sinnogram-itinerary.txt';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 $('begin').onclick=$('nav-plan').onclick=()=>{closeMap(false);openPanel('plan')};$('nav-explore').onclick=explore;$('nav-map').onclick=()=>openMap();$('close-plan').onclick=$('close-detail').onclick=explore;
 $('overview').onclick=showTrip;
-$('zoom-in').onclick=()=>sinnogramScene.zoomBy(.15);$('zoom-out').onclick=()=>sinnogramScene.zoomBy(-.15);$('reset-view').onclick=()=>sinnogramScene.reset();
+$('zoom-in').onclick=()=>sinnogramScene.zoomBy(.15);$('zoom-out').onclick=()=>sinnogramScene.zoomBy(-.15);
 if(typeof sinnogramScene!=='undefined')sinnogramScene.onSelect=p=>{const index=stops.findIndex(v=>same(v,p));if(index>=0||same(startPlace,p))showStop(p,index);else showCandidate({...p,match:'place',description:'An example district/location in Abuja. Confirm the exact entrance pin before adding it.'})};
 $('about').onclick=()=>$('about-dialog').showModal();$('close-about').onclick=()=>$('about-dialog').close();
 (async()=>{

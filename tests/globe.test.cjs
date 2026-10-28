@@ -36,8 +36,7 @@ test('Nigeria leader follows the projected country and hides behind the globe',(
  const s=scene();s.events['style.load']();s.events.move();assert.equal(s.get('nigeria-callout').hidden,false);assert.match(s.get('nigeria-leader-path').d,/M 350 200 L/);
  s.faceAway();s.events.move();assert.equal(s.get('nigeria-callout').hidden,true);assert.equal(s.marker().hidden,true);
 });
-test('explicit pause holds the orbit until played, and selected stops stay still',()=>{
- const s=scene();s.events['style.load']();s.events.idle();s.frame(100);s.get('toggle-orbit').onclick();assert.equal(s.get('toggle-orbit')['aria-pressed'],'true');const before=s.calls.length;s.frame(200);assert.equal(s.calls.length,before);
- s.get('toggle-orbit').onclick();s.frame(300);assert.ok(s.calls.length>before);
+test('selected stops hold the automatic orbit still',()=>{
+ const s=scene();s.events['style.load']();s.events.idle();s.frame(100);
  s.api.set([{name:'Selected stop',lat:9,lng:7}],[],0);const selected=s.calls.length;s.frame(400);assert.equal(s.calls.length,selected);
 });
