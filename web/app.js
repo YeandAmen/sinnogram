@@ -234,7 +234,7 @@ function reviewCapturedLocation(){
   $('pin-position').textContent=`Device accuracy about ${Math.round(f.accuracy)} m · ${f.needsConfirmation?'Move the pin to your actual starting point':'Check the captured point'}`;
 }
 $('review-location').onclick=reviewCapturedLocation;
-$('locate').onclick=()=>{
+function captureLocation(){
   if(busy||locating)return;
   if(!config){$('location-status').textContent='Still connecting. Try location capture again in a moment.';return}
   clearStart();
@@ -242,7 +242,7 @@ $('locate').onclick=()=>{
   if(!navigator.geolocation){$('location-status').textContent='This browser does not support location capture. Choose a starting pin on the map.';return}
   const request=++locationRequest,b=$('locate');locating=true;b.disabled=true;setLabel(b,'◎ Capturing location…');$('optimize').disabled=true;
   const finish=()=>{locating=false;b.disabled=busy;$('optimize').disabled=busy||!startPlace;setLabel(b,startSource==='gps'?'◎ Update my current location':'◎ Use my current location')};capturedFix=null;$('review-location').hidden=true;$('location-status').textContent='Capturing a fresh device location…';
-  const attempt=(retry=false)=>navigator.geolocation.getCurrentPosition(async pos=>{
+  const receive=async pos=>{
     if(request!==locationRequest){finish();return}
     let fix;try{fix=sinnogramLocation.readFix(pos)}catch(e){$('location-status').textContent=e.message;finish();return}
     if(fix.needsConfirmation){
@@ -262,7 +262,8 @@ $('locate').onclick=()=>{
       $('location-status').textContent=`${label.name} · captured at ${sinnogramLocation.captureTime(fix)} · ${sinnogramLocation.coordinates(fix)} · accuracy about ${Math.round(fix.accuracy)} m. Routing uses the captured coordinates; the street name is approximate.`;
     }catch(e){if(locationRequest===currentRequest)$('location-status').textContent=`Captured at ${sinnogramLocation.captureTime(fix)} · ${sinnogramLocation.coordinates(fix)} · accuracy about ${Math.round(fix.accuracy)} m. Street-name lookup unavailable; your captured coordinates are set.`}
     finally{clearTimeout(lookupTimer)}
-  },err=>{
+  };
+  const attempt=(retry=false)=>navigator.geolocation.getCurrentPosition(pos=>receive(pos).catch(locationCaptureFailed),err=>{
     if(request!==locationRequest){finish();return}
     if(!retry&&(err.code===2||err.code===3)){
       $('location-status').textContent='The precision request did not get a location. Trying a fresh standard-accuracy request…';
@@ -271,7 +272,20 @@ $('locate').onclick=()=>{
     $('location-status').textContent=sinnogramLocation.errorMessage(err);finish();
   },retry?sinnogramLocation.retryOptions:sinnogramLocation.options);
   attempt();
+}
+function locationCaptureFailed(){
+  locationRequest++;locating=false;
+  $('locate').disabled=busy;$('optimize').disabled=busy||!startPlace;
+  setLabel($('locate'),'◎ Try location again');
+  $('location-status').textContent='The location controls hit an unexpected error. Reload this page and try again, or choose a starting pin on the map.';
+}
+$('locate').onclick=()=>{
+  if(busy){$('location-status').textContent='Wait for trip organization to finish, then capture your location.';return}
+  if(locating){$('location-status').textContent='Location capture is already running. Check for a location permission prompt in your browser.';return}
+  $('location-status').textContent='Starting location capture…';
+  try{captureLocation()}catch(e){locationCaptureFailed()}
 };
+$('locate').disabled=false;
 $('strategy').onchange=invalidate;$('return').onchange=invalidate;
 $('example').onclick=()=>{if(!config)return;setStart(config.samples[0]);stops=[config.samples[3],config.samples[2],config.samples[4],config.samples[1]].map(clean);invalidate()};
 $('clear').onclick=()=>{stops=[];result=null;activePlace=null;try{localStorage.removeItem('axis-trip-v1')}catch{};$('matches').replaceChildren();$('search-status').textContent='Trip cleared.';render()};

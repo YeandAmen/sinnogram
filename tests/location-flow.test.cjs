@@ -114,3 +114,16 @@ test('a failed decorative canvas cannot stop location capture or erase its feedb
  await capture.success(fix(12));assert.equal(a.start().lat,9.0811598);
  assert.match(a.$('location-status').textContent,/captured at/);
 });
+test('a synchronous browser exception produces visible feedback and an enabled retry',async()=>{
+ const a=await app(reverseLabel);
+ vm.runInContext("navigator.geolocation.getCurrentPosition=()=>{throw Error('Native location unavailable')}",a.context);
+ a.capture();assert.match(a.$('location-status').textContent,/unexpected error/);
+ assert.equal(a.$('locate').disabled,false);assert.equal(a.start(),null);
+ assert.equal(a.$('optimize').disabled,true);
+});
+test('an unexpected error during success handling never leaves the message blank',async()=>{
+ const a=await app(reverseLabel);
+ vm.runInContext("sinnogramLocation.coordinates=()=>{throw Error('Unexpected failure')}",a.context);
+ await a.capture().success(fix(10));
+ assert.match(a.$('location-status').textContent,/unexpected error/);assert.equal(a.$('locate').disabled,false);
+});
