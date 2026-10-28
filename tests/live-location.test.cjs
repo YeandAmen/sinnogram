@@ -132,3 +132,9 @@ test('permission revocation invalidates a pending one-shot success as well as th
   const pending=a.capture();a.watches.get(0).failure({code:1});await pending.success(position(Date.now()+1000));
   assert.equal(a.start(),null);assert.equal(vm.runInContext('liveFix',a.context),null);assert.equal(a.watches.size,0);
 });
+
+test('the map never labels a pending or denied fix as live',async()=>{
+  const street=streetMap(),a=await app(async()=>{},undefined,{L:street.L});a.$('nav-locate').onclick();
+  assert.equal(a.$('map-instruction-title').textContent,'Finding your location.');
+  a.watches.get(0).failure({code:1});assert.equal(a.$('map-instruction-title').textContent,'Location permission is blocked.');
+});

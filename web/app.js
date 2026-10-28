@@ -94,8 +94,8 @@ function renderLiveLocation(message=''){
   $('live-follow').textContent=liveFollow?'Following you':'Follow me';
   $('live-stop').disabled=!tracking&&liveState==='off';
   if(mapMode==='live'&&!pendingPin){
-    $('map-instruction-title').textContent=liveState==='off'?'Live location is off.':'Your location, live.';
-    $('map-instruction-help').textContent=liveState==='off'?'Tap My location to resume, or tap the map to add a stop.':'Follow your movement, or drag the map to explore.';
+    $('map-instruction-title').textContent=liveState==='off'?'Live location is off.':fresh?(liveFix.needsConfirmation?'Approximate location.':'Your location, live.'):liveState==='denied'?'Location permission is blocked.':liveState==='paused'?'Live location is paused.':'Finding your location.';
+    $('map-instruction-help').textContent=liveState==='off'?'Tap My location to resume, or tap the map to add a stop.':fresh?'Follow your movement, or drag the map to explore.':'Keep this site open. Check location permission and device Location Services.';
   }else{
     $('map-instruction-title').textContent='Find the entrance. Place your pin.';
     $('map-instruction-help').textContent='Tap the map or drag the pin to the exact building.';
