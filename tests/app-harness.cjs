@@ -17,6 +17,8 @@ async function app(reverse,search=async()=>({ok:true,json:async()=>({query:"",re
   navigator:{geolocation:{getCurrentPosition(a,b,c){captures++;success=a;failure=b;options=c}}},
   sinnogramScene:{set(){},zoomBy(){},reset(){}},
   fetch:async(path,init)=>{
+   if(path==='/api/route'&&settings.route)return settings.route(path,init);
+   if(path.startsWith('/api/suggest?')&&settings.suggest)return settings.suggest(path,init);
    if(path==='/api/analyze-stops'&&settings.analyze)return settings.analyze(path,init);
    if(path==='/api/optimize'&&settings.optimize)return settings.optimize(path,init);
    if(path==='/api/reverse')return reverse(path,init);

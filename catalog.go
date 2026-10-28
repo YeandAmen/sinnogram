@@ -229,7 +229,9 @@ func equivalentWord(a, b string) bool {
 	}
 	return a+"s" == b || b+"s" == a
 }
-func (c locationCatalog) Search(q string) []Candidate {
+func (c locationCatalog) Search(q string) []Candidate  { return c.search(q, false) }
+func (c locationCatalog) Suggest(q string) []Candidate { return c.search(q, true) }
+func (c locationCatalog) search(q string, prefix bool) []Candidate {
 	words := searchWords(q)
 	if len(words) == 0 {
 		return nil
@@ -246,7 +248,7 @@ func (c locationCatalog) Search(q string) []Candidate {
 		for _, word := range words {
 			exact := false
 			for _, w := range entry.words {
-				if equivalentWord(word, w) {
+				if equivalentWord(word, w) || (prefix && word == words[len(words)-1] && len(word) >= 2 && strings.HasPrefix(w, word)) {
 					variation = variation || word != w
 					exact = true
 					break
@@ -257,7 +259,7 @@ func (c locationCatalog) Search(q string) []Candidate {
 				for _, n := range entry.names {
 					if func() bool {
 						for _, nw := range strings.Fields(n) {
-							if equivalentWord(word, nw) {
+							if equivalentWord(word, nw) || (prefix && word == words[len(words)-1] && len(word) >= 2 && strings.HasPrefix(nw, word)) {
 								return true
 							}
 						}
@@ -316,7 +318,7 @@ func (c locationCatalog) Search(q string) []Candidate {
 	for _, h := range hits {
 		duplicate := false
 		for _, p := range out {
-			if !p.Unlocated && !h.p.Unlocated && strings.Join(searchWords(strings.Split(p.Name, " · ")[0]), " ") == strings.Join(searchWords(strings.Split(h.p.Name, " · ")[0]), " ") && haversine(p.Place, h.p.Place) < 75 {
+			if !p.Unlocated && !h.p.Unlocated && catalogPlaceName(p.Name) == catalogPlaceName(h.p.Name) && haversine(p.Place, h.p.Place) < 150 {
 				duplicate = true
 				break
 			}
@@ -359,4 +361,9 @@ func placeLabel(name, address string) string {
 		last = i
 	}
 	return label[:last] + "…"
+}
+
+// Compare the actual place name, excluding source-specific postal suffixes.
+func catalogPlaceName(name string) string {
+	return strings.Join(searchWords(strings.Split(strings.Split(name, " · ")[0], ",")[0]), " ")
 }

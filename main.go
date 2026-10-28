@@ -479,6 +479,71 @@ func handler(p provider) http.Handler {
 		}
 		jsonOut(w, 200, out)
 	})
+	mux.HandleFunc("GET /api/suggest", func(w http.ResponseWriter, r *http.Request) {
+		q := strings.TrimSpace(r.URL.Query().Get("q"))
+		if len(q) < 2 || len(q) > 300 {
+			fail(w, 400, "enter between 2 and 300 characters")
+			return
+		}
+		rows := officeSearch(q)
+		if len(rows) == 0 {
+			rows = catalog.Suggest(q)
+		}
+		if rows == nil {
+			rows = []Candidate{}
+		}
+		jsonOut(w, 200, SearchResponse{Results: rows, Query: q, Message: "Suggestions from Sinnogram’s location index. Check the branch and pin."})
+	})
+	mux.HandleFunc("POST /api/route", func(w http.ResponseWriter, r *http.Request) {
+		if strings.Split(r.Header.Get("Content-Type"), ";")[0] != "application/json" {
+			fail(w, 415, "send application/json")
+			return
+		}
+		if origin := r.Header.Get("Origin"); origin != "" {
+			u, e := url.Parse(origin)
+			if e != nil || u.Host != r.Host {
+				fail(w, 403, "cross-origin requests are not allowed")
+				return
+			}
+		}
+		var trip Trip
+		d := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16384))
+		d.DisallowUnknownFields()
+		if d.Decode(&trip) != nil || d.Decode(&struct{}{}) != io.EOF {
+			fail(w, 400, "invalid trip JSON")
+			return
+		}
+		// The client sends its already organized points; the road request keeps that order.
+		trip.Strategy = "input"
+		if e := validate(trip); e != nil {
+			fail(w, 400, e.Error())
+			return
+		}
+		o, ok := p.(*osm)
+		if !ok {
+			fail(w, 400, "road geometry requires the OSM road provider")
+			return
+		}
+		select {
+		case gate <- struct{}{}:
+			defer func() { <-gate }()
+		default:
+			fail(w, 429, "please wait for the current route")
+			return
+		}
+		points := append([]Place{trip.Start}, trip.Stops...)
+		if trip.RoundTrip {
+			points = append(points, trip.Start)
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
+		defer cancel()
+		line, e := o.RoadLine(ctx, points)
+		if e != nil {
+			fail(w, 502, e.Error())
+			return
+		}
+		jsonOut(w, 200, map[string]any{"coordinates": line})
+	})
 	mux.HandleFunc("GET /api/search", func(w http.ResponseWriter, r *http.Request) {
 		q := strings.TrimSpace(r.URL.Query().Get("q"))
 		if len(q) < 2 || len(q) > 300 {
@@ -624,7 +689,7 @@ func handler(p provider) http.Handler {
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		w.Header().Set("Permissions-Policy", "geolocation=(self)")
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://tile.openstreetmap.org; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'")
-		allowed := r.Host == "127.0.0.1:8080" || r.Host == "localhost:8080"
+		allowed := r.Host == "127.0.0.1:8080" || r.Host == "localhost:8080" || r.Host == "sinnogram.vercel.app" || r.Host == "axis-abuja-test.vercel.app"
 		for _, key := range []string{"AXIS_PUBLIC_HOST", "VERCEL_URL", "VERCEL_PROJECT_PRODUCTION_URL"} {
 			if h := os.Getenv(key); h != "" && r.Host == h {
 				allowed = true
