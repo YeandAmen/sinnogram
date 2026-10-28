@@ -365,9 +365,15 @@ func handler(p provider) http.Handler {
 	mux.Handle("GET /api/tiles/", newTileRelay())
 	gate := make(chan struct{}, 2)
 	mux.HandleFunc("GET /api/config", func(w http.ResponseWriter, r *http.Request) {
-		jsonOut(w, 200, map[string]any{"provider": p.Name(), "max_stops": 10, "samples": samples})
+		jsonOut(w, 200, map[string]any{"provider": p.Name(), "max_stops": 10, "samples": samples, "coverage": map[string]any{"scope": fctScope, "bbox": fctCoverage.BBox}})
 	})
 	mux.HandleFunc("GET /api/location-data", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("source") == "boundary" {
+			w.Header().Set("Content-Type", "application/geo+json")
+			w.Header().Set("Content-Disposition", `attachment; filename="sinnogram-fct-boundary.geojson"`)
+			w.Write(fctBoundaryData)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Content-Disposition", `attachment; filename="sinnogram-osm-locations.json"`)
 		path := "data/osm_locations.json"
@@ -383,7 +389,22 @@ func handler(p provider) http.Handler {
 		w.Write(b)
 	})
 	mux.HandleFunc("GET /api/location-coverage", func(w http.ResponseWriter, r *http.Request) {
-		jsonOut(w, 200, map[string]any{"mapped_records": len(catalog.Snapshot.Records) + len(catalog.Overture.Records), "osm_records": len(catalog.Snapshot.Records), "overture_records": len(catalog.Overture.Records), "overture_release": catalog.Overture.Release, "overture_snapshot_at": catalog.Overture.SnapshotAt, "overture_license": catalog.Overture.License, "building_address_leads": len(catalog.Buildings.Records), "buildings_download": "/api/location-data?source=buildings", "reviewed_address_leads": len(catalog.Reviewed.Records), "overture_download": "/api/location-data?source=overture", "seed_leads": catalog.Seeds, "snapshot_at": catalog.Snapshot.SnapshotAt, "scope": catalog.Snapshot.Scope, "bbox": catalog.Snapshot.BBox, "license": catalog.Snapshot.License, "attribution": catalog.Snapshot.Attribution, "download": "/api/location-data"})
+		jsonOut(w, 200, map[string]any{
+			"mapped_records": len(catalog.Snapshot.Records) + len(catalog.Overture.Records),
+			"osm_records":    len(catalog.Snapshot.Records), "overture_records": len(catalog.Overture.Records),
+			"overture_release": catalog.Overture.Release, "overture_snapshot_at": catalog.Overture.SnapshotAt, "overture_license": catalog.Overture.License,
+			"building_address_leads": len(catalog.Buildings.Records), "buildings_download": "/api/location-data?source=buildings",
+			"reviewed_address_leads": len(catalog.Reviewed.Records), "overture_download": "/api/location-data?source=overture", "seed_leads": catalog.Seeds,
+			"snapshot_at": catalog.Snapshot.SnapshotAt, "scope": fctScope, "bbox": fctCoverage.BBox,
+			"osm_scope": catalog.Snapshot.Scope, "overture_scope": catalog.Overture.Scope,
+			"full_fct_collection": catalog.Snapshot.FullFCTCollection && catalog.Overture.FullFCTCollection,
+			"area_councils":       catalog.Coverage.Councils, "unassigned_mapped_records": catalog.Coverage.UnassignedMappedRecords,
+			"unassigned_address_leads": catalog.Coverage.UnassignedAddressLeads,
+			"boundary_sha256":          fctCoverage.SHA256, "boundary_license": fctCoverage.License, "boundary_attribution": fctCoverage.Attribution,
+			"boundary_download": "/api/location-data?source=boundary",
+			"coverage_target":   map[string]any{"metric": "find_and_route_success", "rate": .99, "measured_rate": nil, "status": "unmeasured"},
+			"license":           catalog.Snapshot.License, "attribution": catalog.Snapshot.Attribution, "download": "/api/location-data",
+		})
 	})
 	mux.HandleFunc("POST /api/reverse", func(w http.ResponseWriter, r *http.Request) {
 		if strings.Split(r.Header.Get("Content-Type"), ";")[0] != "application/json" {

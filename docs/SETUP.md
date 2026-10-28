@@ -5,7 +5,7 @@
 | Mode | Configuration | Behavior |
 | --- | --- | --- |
 | Demo | `go run .` | Approximate sample locations and straight-line distances; no API key |
-| Local OSM | `AXIS_PROVIDER=osm` | Explicit Abuja address search and OSRM road matrices; process-local throttling |
+| Local OSM | `AXIS_PROVIDER=osm` | FCT address search and OSRM road matrices; process-local throttling |
 | Public OSM beta | `AXIS_PROVIDER=osm`, `SINNOGRAM_PUBLIC_BETA=1`, `SINNOGRAM_GATE_URL`, `BLOB_READ_WRITE_TOKEN` | Shared conditional-write lease across all server instances; fails closed if coordination is unavailable |
 | Google | `GOOGLE_MAPS_API_KEY` | Nigerian address geocoding and traffic-unaware driving matrices; billing and quotas required |
 
@@ -49,7 +49,7 @@ Allowed public hosts come from `AXIS_PUBLIC_HOST`, `VERCEL_URL` and `VERCEL_PROJ
 
 Held–Karp dynamic programming finds the exact shortest visit order for the supplied directed distance matrix, with a fixed starting point and up to 10 stops. The return-home option participates in optimization. OSRM matrix distances describe its suggested fastest driving routes between pairs; they are not a guarantee of the absolute shortest roads, current fastest journey, fuel cost, or taxi fare.
 
-Address search is bounded to Abuja and nearby areas. Plot numbers missing from OSM trigger a labelled street fallback, which requires the user to move the map pin before adding the destination. A checked directory entry resolves NIRSAL Head Office at Plot 1581, Tigris Crescent, Maitama, using the [official address](https://vendor.nirsal.com/) and mapped building pin. Other plot numbers are not assumed to be indexed.
+Address search covers the FCT boundary, including Abaji, Abuja Municipal, Bwari, Gwagwalada, Kuje and Kwali. Live geocoding uses its enclosing rectangle and filters returned coordinates against the polygon. Plot numbers missing from OSM trigger a labelled street fallback, which requires the user to move the map pin before adding the destination. A checked directory entry resolves NIRSAL Head Office at Plot 1581, Tigris Crescent, Maitama, using the [official address](https://vendor.nirsal.com/) and mapped building pin. Other plot numbers are not assumed to be indexed.
 
 The metallic scene is a geographic constellation, not actual buildings or a street map. Open the separate Leaflet view for roads and pin confirmation. OpenStreetMap tiles are fetched only while that map is used; attribution remains visible and no offline tile prefetching is implemented.
 
@@ -64,26 +64,40 @@ Leaflet 1.9.4 is bundled under BSD-2-Clause; its license is in `web/vendor/LEAFL
 
 ## Public location catalog and updates
 
-The deployed source includes a greater-Abuja OSM snapshot, normalized from a single Overpass export, and the supplied 39-row public-address seed CSV. The OSM bounding box is west 7.15, south 8.80, east 7.80, north 9.40. It is **not the complete FCT boundary or exhaustive address coverage**. See `data/ATTRIBUTION.md` for source and license details.
+The source includes a whole-FCT OSM snapshot, a separately licensed Overture snapshot, and the supplied 39-row public-address seed CSV. Both mapped sources are filtered using `data/fct_boundary.geojson`, from GRID3/geoBoundaries (2022, CC BY 4.0), including all six area councils. The enclosing rectangle is approximately west 6.77996208, south 8.41933623, east 7.72408047, north 9.40868498. `scripts/fct.py` and `coverage.go` use the same polygons; neighbouring-state points inside the rectangle are excluded. See `data/ATTRIBUTION.md` for provenance and licenses.
+
+`/api/location-coverage` reports source counts, council counts, boundary hash and export scope. `coverage_target.rate` is 0.99, while `coverage_target.measured_rate` remains null: source counts and six-council presence do not establish 99% destination-and-entrance completeness. That target requires independently reviewed search-and-road-route cases distributed across the FCT, followed by resolving observed misses. `scripts/check_fct_coverage.py` verifies current source integrity and geographic presence.
 
 Search checks the reviewed office directory, then this catalog, then explicit external searches. Name/acronym matching and at most one spelling edit help discovery. Numeric address components are never fuzzily corrected. Road coordinates are representative points and require a moved pin. A seed without coordinates stays an address-only lead: it is excluded from the legacy coordinate-only endpoint and must receive a confirmed map pin before routing. Clicking a map pin does not automatically publish it into the global catalog.
 
 To refresh explicitly (not on every visitor request):
 
 ```sh
-python3 scripts/collect_abuja_osm.py /tmp/sinnogram-abuja-osm.json
-python3 scripts/import_locations.py /tmp/sinnogram-abuja-osm.json data/osm_locations.json
+python3 scripts/collect_fct_boundaries.py data/fct_boundary.geojson
+python3 -m venv /tmp/sinnogram-data-venv
+/tmp/sinnogram-data-venv/bin/pip install overturemaps==1.0.2 osmium==4.3.2
+python3 scripts/download_osm_extract.py https://download.geofabrik.de/africa/nigeria-261027.osm.pbf /tmp/sinnogram-nigeria.osm.pbf
+/tmp/sinnogram-data-venv/bin/python scripts/collect_abuja_osm.py /tmp/sinnogram-fct-osm.json --pbf /tmp/sinnogram-nigeria.osm.pbf --source-url https://download.geofabrik.de/africa/nigeria-261027.osm.pbf
+python3 scripts/import_locations.py /tmp/sinnogram-fct-osm.json data/osm_locations.json
+/tmp/sinnogram-data-venv/bin/python scripts/collect_fct_overture.py /tmp/sinnogram-fct-places.geojsonseq --release 2026-10-21.0
+python3 scripts/import_overture_places.py /tmp/sinnogram-fct-places.geojsonseq data/overture_places.json
+python3 scripts/extract_building_leads.py data/overture_places.json data/building_leads.json
+python3 scripts/check_fct_coverage.py
 go test -race ./...
 node --test tests/*.test.cjs
 ```
 
 Review source differences before publishing a refresh. The importer retains stable OSM IDs and source URLs, excludes explicitly private/disused features, and deduplicates adjacent road segments and near-identical same-name points. It does not guess missing coordinates or merge headquarters with branches. Retain the raw snapshot separately if needed for audit; do not commit personal fixes or itineraries. A reviewed data update and deployment changes the index; submitting a search does not train an AI model or establish a new verified address.
 
+Use a newer dated Geofabrik extract and Overture release for subsequent refreshes. The country download is checksum-verified and cached; PBF processing uses a temporary disk-backed node cache. Road representatives stay on their mapped FCT road segment. Towns and districts remain broad-area leads requiring an exact pin. The Overpass collector is also available without `--pbf`; `--endpoint` selects an alternative server when the default is unavailable. Visitor requests never trigger bulk downloads.
+
 The current snapshot can be downloaded at `/api/location-data` with ODbL attribution; `/api/location-coverage` exposes record counts, timestamp, bounding box and license. A production-scale catalog can replace the embedded snapshot with a spatial database and licensed Overture/AGIS/NIPOST imports. Overture places are now imported as described below; AGIS and NIPOST have not been imported or represented as available.
 
 ## Device location
 
-The desktop/mobile browser requests a fresh high-accuracy location only after the user clicks the button (`maximumAge: 0`). Fresh fixes up to 150 m reported accuracy become the start; broader fixes require explicit map adjustment, leaving the previous start unchanged. The screen shows coordinates, reported accuracy and a map-review action. Hardware, browser permissions and OS Location Services determine the fix quality; a laptop may provide a broad area.
+The live marker uses a high-accuracy `watchPosition` with `maximumAge: 0`. My location enables and recentres it; Follow me keeps the street map centred, and dragging the map releases follow mode. The marker appears on the globe and street/route map with its reported accuracy. A watch is refreshed when no fresh fix arrives for a minute, including stationary devices. Old, invalid and superseded callbacks cannot rewind it. Hidden pages pause tracking, and visibility/page restoration resumes with a fresh watch. Already-granted permission or a previously successful opt-in enables it on return; Stop live location persists only an off preference. GPS coordinates are never stored by the live tracker or sent for continuous reverse geocoding.
+
+The live marker does not change an organized trip's origin or arrival progress. Use my current location separately captures a fresh routing origin. Fixes up to 150 m accuracy become the start; broader fixes require explicit acceptance or map adjustment. HTTPS/localhost and device location permission are required. Reliable tracking with the browser closed or phone locked requires a mobile application with background-location support.
 
 A same-origin `POST /api/reverse` translates the coordinates to nearby street/area context through the existing shared provider lease. This is a nearby OSM feature label, **not proof of the user's building address**. The original device coordinates remain the route origin. Reverse lookup failure keeps the measured coordinates usable. GPS fixes are not added to the public catalog, lease object, server logs, or saved trip origin by this application. GPS-derived origins and their calculated routes live only in the current page; refresh preserves destinations and requires a new starting point. Explicitly chosen fixed starts may restore with a Saved label. Legacy saved starts without source metadata are discarded while destinations are retained. A new location capture clears the previous origin first; a failure leaves the origin unset. Capture time and accuracy are shown, and the button becomes Update my current location after success. The selected provider receives coordinates for lookup and routing. HTTPS (or localhost) is required.
 
@@ -100,10 +114,8 @@ The exact distance strategy remains the default. Its directed-cost dynamic-progr
 The extra `data/overture_places.json` is a separate, permissively licensed places snapshot. It preserves source-level confidence, provenance and licenses; it does not copy Google Maps results into the app's own catalog. The API reports `osm_records`, `overture_records` and `reviewed_address_leads` separately. The original `/api/location-data` remains the ODbL snapshot; `?source=overture` downloads the separate Overture data with its license texts and notices.
 
 ```sh
-python3 -m venv /tmp/sinnogram-overture-venv
-/tmp/sinnogram-overture-venv/bin/pip install overturemaps==1.0.2
-/tmp/sinnogram-overture-venv/bin/overturemaps download --bbox=7.15,8.80,7.80,9.40 -f geojsonseq --type=place -o /tmp/abuja-places.geojsonseq
-python3 scripts/import_overture_places.py /tmp/abuja-places.geojsonseq data/overture_places.json
+/tmp/sinnogram-data-venv/bin/python scripts/collect_fct_overture.py /tmp/sinnogram-fct-places.geojsonseq --release 2026-10-21.0
+python3 scripts/import_overture_places.py /tmp/sinnogram-fct-places.geojsonseq data/overture_places.json
 ```
 
 Review changes before publishing; a source confidence score is not proof of a precise/current entrance. Low-confidence listings require moving the map pin. Business-name singular/plural variants and Wuse 2/Wuse II/Wuse2 normalization help lookup, while numeric plot and branch constraints remain strict. Street fallbacks use actual mapped streets rather than unrelated business pins whose postal text mentions the street.
@@ -126,7 +138,7 @@ The explore view uses MapLibre GL JS 5.0.0's globe projection with a locally hos
 
 `data/reviewed_places.json` also contains GCL Plaza's published address from TGM Education's office page, checked 28 October 2026. This confirms a searchable address, not an exact entrance coordinate. Conversational connector words “at” and “in” no longer prevent a catalog match. Duplicate aliases no longer inflate search rankings, and mapped OSM places rank ahead of inferred building leads.
 
-The 28 October refresh expands the OSM collection to all named features within the same greater-Abuja bounding box, plus branded shops and numbered addresses. It contains 3,441 mapped OSM records alongside 16,423 Overture records, and the building extractor adds 966 separate address leads. Bus stops are point features rather than street segments. The checked-in counts are snapshot counts, not a claim of complete address or entrance coverage.
+The whole-FCT refresh contains 3,778 OSM records from the 27 October Geofabrik extract and 16,220 Overture records from release `2026-10-21.0`, with 982 separate building-address leads. Bus stops are points, roads are street representatives, and towns/districts are area leads. All six councils have records in both mapped sources. Counts describe source records, not unique verified entrances or measured 99% coverage.
 
 ### Bulk text stops
 
