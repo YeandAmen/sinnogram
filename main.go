@@ -375,11 +375,15 @@ func handler(p provider) http.Handler {
 			path = "data/overture_places.json"
 			w.Header().Set("Content-Disposition", `attachment; filename="sinnogram-overture-places.json"`)
 		}
+		if r.URL.Query().Get("source") == "buildings" {
+			path = "data/building_leads.json"
+			w.Header().Set("Content-Disposition", `attachment; filename="sinnogram-building-leads.json"`)
+		}
 		b, _ := catalogFiles.ReadFile(path)
 		w.Write(b)
 	})
 	mux.HandleFunc("GET /api/location-coverage", func(w http.ResponseWriter, r *http.Request) {
-		jsonOut(w, 200, map[string]any{"mapped_records": len(catalog.Snapshot.Records) + len(catalog.Overture.Records), "osm_records": len(catalog.Snapshot.Records), "overture_records": len(catalog.Overture.Records), "overture_release": catalog.Overture.Release, "overture_snapshot_at": catalog.Overture.SnapshotAt, "overture_license": catalog.Overture.License, "reviewed_address_leads": len(catalog.Reviewed.Records), "overture_download": "/api/location-data?source=overture", "seed_leads": catalog.Seeds, "snapshot_at": catalog.Snapshot.SnapshotAt, "scope": catalog.Snapshot.Scope, "bbox": catalog.Snapshot.BBox, "license": catalog.Snapshot.License, "attribution": catalog.Snapshot.Attribution, "download": "/api/location-data"})
+		jsonOut(w, 200, map[string]any{"mapped_records": len(catalog.Snapshot.Records) + len(catalog.Overture.Records), "osm_records": len(catalog.Snapshot.Records), "overture_records": len(catalog.Overture.Records), "overture_release": catalog.Overture.Release, "overture_snapshot_at": catalog.Overture.SnapshotAt, "overture_license": catalog.Overture.License, "building_address_leads": len(catalog.Buildings.Records), "buildings_download": "/api/location-data?source=buildings", "reviewed_address_leads": len(catalog.Reviewed.Records), "overture_download": "/api/location-data?source=overture", "seed_leads": catalog.Seeds, "snapshot_at": catalog.Snapshot.SnapshotAt, "scope": catalog.Snapshot.Scope, "bbox": catalog.Snapshot.BBox, "license": catalog.Snapshot.License, "attribution": catalog.Snapshot.Attribution, "download": "/api/location-data"})
 	})
 	mux.HandleFunc("POST /api/reverse", func(w http.ResponseWriter, r *http.Request) {
 		if strings.Split(r.Header.Get("Content-Type"), ";")[0] != "application/json" {

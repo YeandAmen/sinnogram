@@ -401,8 +401,8 @@ $('about').onclick=()=>$('about-dialog').showModal();$('close-about').onclick=()
     }
     render();
     api('/api/location-coverage').then(c=>{
-      const node=$('coverage-status');node.replaceChildren(document.createTextNode(`${c.mapped_records.toLocaleString()} map records · ${c.seed_leads+(c.reviewed_address_leads||0)} address leads. Greater Abuja snapshot; coverage varies. © OpenStreetMap contributors; Overture Maps & source contributors · `));
-      const link=el('a','Data & attribution');link.href='/api/location-data';node.append(link);if(c.overture_records){const extra=el('a',' · Overture data');extra.href=c.overture_download;node.append(extra)}
+      const node=$('coverage-status');node.replaceChildren(document.createTextNode(`${c.mapped_records.toLocaleString()} map records · ${c.seed_leads+(c.reviewed_address_leads||0)+(c.building_address_leads||0)} address leads. Greater Abuja snapshot; coverage varies. © OpenStreetMap contributors; Overture Maps & source contributors · `));
+      const link=el('a','Data & attribution');link.href='/api/location-data';node.append(link);if(c.overture_records){const extra=el('a',' · Overture data');extra.href=c.overture_download;node.append(extra)}if(c.building_address_leads){const buildings=el('a',' · Building address data');buildings.href=c.buildings_download;node.append(buildings)}
     }).catch(()=>{});
   }catch(e){$('footer-status').textContent='Connection unavailable';openPanel('plan');error(e.message)}
 })();

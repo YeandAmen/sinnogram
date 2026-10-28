@@ -14,7 +14,7 @@ import (
 
 // Public, versioned source snapshots. Personal trips and GPS fixes never enter this catalog.
 //
-//go:embed data/osm_locations.json data/seed_public_locations.csv data/overture_places.json data/reviewed_places.json
+//go:embed data/osm_locations.json data/seed_public_locations.csv data/overture_places.json data/reviewed_places.json data/building_leads.json
 var catalogFiles embed.FS
 
 type catalogRecord struct {
@@ -46,11 +46,12 @@ type indexedLocation struct {
 	names []string
 }
 type locationCatalog struct {
-	entries  []indexedLocation
-	Snapshot catalogSnapshot
-	Seeds    int
-	Overture catalogSnapshot
-	Reviewed catalogSnapshot
+	entries   []indexedLocation
+	Snapshot  catalogSnapshot
+	Seeds     int
+	Overture  catalogSnapshot
+	Reviewed  catalogSnapshot
+	Buildings catalogSnapshot
 }
 
 var wuseDistrict = regexp.MustCompile(`(?i)\bwuse[\s-]*(ii|two|2)\b`)
@@ -66,7 +67,7 @@ func searchWords(s string) []string {
 		}
 		return ' '
 	}, s)
-	skip := map[string]bool{"abuja": true, "fct": true, "nigeria": true, "federal": true, "capital": true, "territory": true, "district": true, "the": true, "of": true, "and": true, "plot": true, "no": true, "number": true, "pmb": true, "limited": true, "ltd": true, "plc": true}
+	skip := map[string]bool{"abuja": true, "fct": true, "nigeria": true, "federal": true, "capital": true, "territory": true, "district": true, "the": true, "at": true, "in": true, "of": true, "and": true, "plot": true, "no": true, "number": true, "pmb": true, "limited": true, "ltd": true, "plc": true}
 	aliases := map[string]string{"st": "street", "rd": "road", "ave": "avenue", "cres": "crescent"}
 	out := []string{}
 	for _, v := range strings.Fields(s) {
@@ -100,7 +101,7 @@ func loadCatalog() locationCatalog {
 		}
 		c.add(Candidate{Place: Place{placeLabel(r.Name, r.Address), r.Lat, r.Lng}, Match: match, Description: description, Source: r.Source, ID: r.ID, Category: r.Category, UpdatedAt: c.Snapshot.SnapshotAt, License: "ODbL-1.0"}, append([]string{r.Name}, r.Aliases...), r.Address)
 	}
-	for _, path := range []string{"data/overture_places.json", "data/reviewed_places.json"} {
+	for _, path := range []string{"data/overture_places.json", "data/reviewed_places.json", "data/building_leads.json"} {
 		var snapshot catalogSnapshot
 		b, e := catalogFiles.ReadFile(path)
 		if e != nil {
@@ -111,6 +112,8 @@ func loadCatalog() locationCatalog {
 		}
 		if strings.Contains(path, "overture") {
 			c.Overture = snapshot
+		} else if strings.Contains(path, "building_leads") {
+			c.Buildings = snapshot
 		} else {
 			c.Reviewed = snapshot
 		}
@@ -120,7 +123,14 @@ func loadCatalog() locationCatalog {
 			if r.Precision == "address" {
 				match = "address"
 				unlocated = true
-				description = "Business-published branch address, checked 27 October 2026. Its building pin is not verified. Confirm this branch's entrance before routing."
+				checked := r.UpdatedAt
+				if checked == "" {
+					checked = snapshot.SnapshotAt
+				}
+				description = "Published address checked " + checked + ". Its building pin is not verified. Confirm the entrance before routing."
+				if strings.HasPrefix(r.ID, "building/") {
+					description = "Named building found in public business address records. Its location and entrance are not verified. Find and confirm the exact building pin before routing."
+				}
 			} else if r.Name == "" || r.Lat < 8.8 || r.Lat > 9.4 || r.Lng < 7.15 || r.Lng > 7.8 {
 				panic("invalid supplemental point: " + r.ID)
 			}
@@ -169,8 +179,13 @@ func loadCatalog() locationCatalog {
 }
 func (c *locationCatalog) add(p Candidate, names []string, address string) {
 	n := []string{}
+	seenNames := map[string]bool{}
 	for _, name := range names {
-		n = append(n, strings.Join(searchWords(name), " "))
+		key := strings.Join(searchWords(name), " ")
+		if !seenNames[key] {
+			n = append(n, key)
+			seenNames[key] = true
+		}
 	}
 	c.entries = append(c.entries, indexedLocation{p, searchWords(strings.Join(names, " ") + " " + address), n})
 }
@@ -266,8 +281,14 @@ func (c locationCatalog) Search(q string) []Candidate {
 			continue
 		}
 		score := matched*5 + nameMatches*4 - fuzzy*8
-		if entry.Unlocated {
+		if strings.HasPrefix(entry.ID, "osm/") && entry.Match == "place" {
+			score += 35
+		}
+		if entry.Unlocated && !strings.HasPrefix(entry.ID, "building/") {
 			score += 20
+		}
+		if strings.HasPrefix(entry.ID, "building/") {
+			score -= 25
 		}
 		if strings.HasPrefix(entry.ID, "reviewed/") {
 			score += 30

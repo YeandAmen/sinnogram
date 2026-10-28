@@ -28,7 +28,7 @@ def normalize(raw):
             name = t['addr:housenumber'] + ' ' + t['addr:street']
         if not name:
             continue
-        road = 'highway' in t
+        road = 'highway' in t and t['highway'] not in ['bus_stop', 'platform', 'rest_area', 'motorway_junction']
         # Collapse adjacent segments of the same named road; road points always require a pin move.
         key = (name.casefold(), address.casefold(), 'road' if road else (round(lat, 4), round(lng, 4)))
         if key in seen:
@@ -40,7 +40,7 @@ def normalize(raw):
         rows.append(dict(id=f"osm/{e['type']}/{e['id']}", name=name[:250], address=address[:300],
             aliases=list(dict.fromkeys(aliases)), lat=lat, lng=lng,
             precision='street' if road else 'mapped',
-            category=next((t[k] for k in ['amenity','shop','office','tourism','healthcare','highway','building'] if k in t), 'address'),
+            category=next((t[k] for k in ['amenity','shop','office','tourism','healthcare','highway','building','place','leisure','landuse','natural','public_transport'] if k in t), 'address'),
             source=f"https://www.openstreetmap.org/{e['type']}/{e['id']}"))
     return {'license':'ODbL-1.0', 'attribution':'© OpenStreetMap contributors',
         'bbox': BBOX, 'scope':'Greater Abuja bounding box, not the complete FCT',

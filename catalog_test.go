@@ -99,3 +99,35 @@ func TestCatalogRoutingLabelsStayWithinByteLimit(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildingSearchAndConversationalLocationWords(t *testing.T) {
+	for _, q := range []string{"GCL plaza at wuse", "GCL Plaza in Wuse II", "G C L Plaza Wuse 2", "G.C.L. Plaza, Wuse 2", "GCL Plaza 38 Aminu Kano Crescent"} {
+		rows := catalog.Search(q)
+		if len(rows) == 0 || rows[0].ID != "reviewed/gcl-plaza-wuse-2" {
+			t.Fatalf("GCL missing or wrong building: %q: %+v", q, rows)
+		}
+		if !rows[0].Unlocated || rows[0].Lat != 0 || rows[0].Lng != 0 {
+			t.Fatal("published address promoted to exact pin", rows[0])
+		}
+	}
+	if len(catalog.Buildings.Records) < 900 {
+		t.Fatal("building address bank missing")
+	}
+	for _, e := range catalog.entries {
+		if strings.HasPrefix(e.ID, "building/") && (!e.Unlocated || e.Match != "address" || e.Lat != 0 || e.Lng != 0) {
+			t.Fatal("tenant pin reused as building coordinate", e)
+		}
+	}
+	rows := catalog.Search("Jabi Lake Mall")
+	if len(rows) == 0 || rows[0].Unlocated {
+		t.Fatal("building lead hid an existing mapped place", rows)
+	}
+	o := newOSM()
+	o.requireShared = true
+	o.shared = nil
+	o.searchURL = "https://example.invalid"
+	r, err := o.SearchDetailed(context.Background(), "GCL plaza at Wuse")
+	if err != nil || len(r.Results) == 0 || r.Results[0].ID != "reviewed/gcl-plaza-wuse-2" {
+		t.Fatal("index search tried to depend on upstream", r, err)
+	}
+}

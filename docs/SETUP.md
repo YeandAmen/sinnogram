@@ -119,3 +119,11 @@ A broad device fix is offered as an explicitly approximate starting point. Accep
 ### Explore globe
 
 The explore view uses MapLibre GL JS 5.0.0's globe projection with a locally hosted CSP worker. Renderer files and the BSD license are in `web/vendor/`. Country outlines are a reduced Natural Earth 1:110m dataset, in the public domain; provenance is in `web/vendor/NATURAL-EARTH.txt`. Globe exploration does not request OSM tiles. It highlights Nigeria, marks Abuja or the selected stop, and illustrates visit order without claiming to show the driving path. The Leaflet street map remains the precise pin and road view. Unsupported WebGL or a stalled globe falls back to a labelled static geographic preview while the planner remains usable.
+
+### Named building address bank
+
+`python3 scripts/extract_building_leads.py data/overture_places.json data/building_leads.json` extracts standalone commercial building names from postal-address text in the licensed Overture snapshot. It excludes nearby references such as “opposite X Plaza,” strips suite/floor prefixes, keeps district variants separate, and retains source record IDs, original addresses, source metadata and license notices. The resulting entries have **no coordinates**: tenant pins can disagree and must never become a purported building entrance. The bank is downloadable at `/api/location-data?source=buildings`; coverage reports its count separately from mapped records.
+
+`data/reviewed_places.json` also contains GCL Plaza's published address from TGM Education's office page, checked 28 October 2026. This confirms a searchable address, not an exact entrance coordinate. Conversational connector words “at” and “in” no longer prevent a catalog match. Duplicate aliases no longer inflate search rankings, and mapped OSM places rank ahead of inferred building leads.
+
+The 28 October refresh expands the OSM collection to all named features within the same greater-Abuja bounding box, plus branded shops and numbered addresses. It contains 3,441 mapped OSM records alongside 16,423 Overture records, and the building extractor adds 966 separate address leads. Bus stops are point features rather than street segments. The checked-in counts are snapshot counts, not a claim of complete address or entrance coverage.
