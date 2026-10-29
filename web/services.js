@@ -1,7 +1,7 @@
 (()=>{
  'use strict';
  const C=sinnogramServices,$=id=>document.getElementById(id),body=$('service-dialog-body'),dialog=$('service-dialog');
- let profiles=[],active=null,category='',user=null,otpEnabled=false,sessionReady=false,toastTimer,modalVersion=0;
+ let profiles=[],active=null,category='',user=null,otpEnabled=false,sessionReady=false,toastTimer,modalVersion=0,browse=false,loading=true,loadError='';
  const make=(tag,text,cls)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e};
  function button(label,action,cls='inline-link'){const b=make('button',label,cls);b.type='button';b.onclick=action;return b}
  const rate=p=>p.price===null?'Ask for pricing':`From ₦${p.price.toLocaleString('en-NG')} / ${p.unit}`;
@@ -22,24 +22,27 @@
  function visual(p){const root=make('div',undefined,'provider-visual');if(p.photos.length){const im=make('img');im.src=p.photos[0].url;im.alt=p.photos[0].caption||`Work by ${p.name}`;im.loading='lazy';root.append(im)}else root.append(make('span',p.name.split(/\s+/).slice(0,2).map(s=>s[0]).join(''),'provider-monogram'));return root}
  function render(){
   const query=$('service-query').value,area=$('service-area').value;
-  const list=profiles.filter(p=>C.matches(p,query,category,area));$('service-results').replaceChildren();
+  $('service-results').replaceChildren();$('service-status').textContent='';$('service-retry').hidden=true;
+  if(!browse&&!category&&!query.trim()&&!area)return;
+  if(loading){$('service-status').textContent='Finding services…';return}
+  if(loadError){$('service-status').textContent=loadError;$('service-retry').hidden=false;return}
+  const list=profiles.filter(p=>C.matches(p,query,category,area));
   $('service-status').textContent=list.length?'':profiles.length?'No services match that search. Try another area or category.':'The directory is just getting started. You can list your service below.';
   for(const name of category?[category]:C.categories){
-   const members=list.filter(p=>p.category===name),column=make('section',undefined,'service-column');
+   const members=list.filter(p=>p.category===name);if(!members.length)continue;const column=make('section',undefined,'service-column');
    const heading=make('h2',name);column.append(heading);
-   if(!members.length)column.append(make('p',query||area?'No matches here.':'No providers listed yet.','service-column-empty'));
    for(const p of members){const card=button('',()=>showProfile(p),'provider-row');card.setAttribute('aria-label',`View ${p.name}`);card.append(make('h3',p.name),make('p',`${p.title} · ${p.area}`,'provider-meta'),make('p',rate(p),'provider-rate'));column.append(card)}
    $('service-results').append(column);
   }
  }
  async function load(){
-  $('service-retry').hidden=true;$('service-status').textContent='Finding people around you…';
-  try{const d=await api('/providers');profiles=(d.profiles||[]).map(C.profile).filter(Boolean);render();const selected=new URLSearchParams(location.search).get('provider');if(C.id(selected)){const p=profiles.find(p=>p.id===selected);if(p)showProfile(p)}}
-  catch(e){$('service-status').textContent=e.message;$('service-retry').hidden=false}
+  loading=true;loadError='';render();
+  try{const d=await api('/providers');profiles=(d.profiles||[]).map(C.profile).filter(Boolean);loading=false;render();const selected=new URLSearchParams(location.search).get('provider');if(C.id(selected)){const p=profiles.find(p=>p.id===selected);if(p)showProfile(p)}}
+  catch(e){loading=false;loadError=e.message;render()}
  }
  $('service-retry').onclick=load;$('service-query').oninput=render;$('service-area').onchange=render;$('service-search').onsubmit=e=>{e.preventDefault();render()};
  C.areas.forEach(area=>{const o=make('option',area);o.value=area;$('service-area').append(o)});
- ['All services',...C.categories].forEach((name,i)=>{const b=button(name,()=>{category=i?name:'';for(const node of $('service-categories').children)node.setAttribute('aria-pressed',String(node===b));render()});b.setAttribute('aria-pressed',String(i===0));$('service-categories').append(b)});
+ ['All services',...C.categories].forEach((name,i)=>{const b=button(name,()=>{category=i?name:'';browse=true;for(const node of $('service-categories').children)node.setAttribute('aria-pressed',String(node===b));render()});b.setAttribute('aria-pressed','false');$('service-categories').append(b)});
  function showProfile(p){
   active=p;const version=modal(p.name);const heading=body.firstChild;const grid=make('div',undefined,'service-detail-grid'),gallery=make('div',undefined,'provider-gallery'),copy=make('div',undefined,'service-detail-copy');
   if(p.photos.length)for(const photo of p.photos){const figure=make('figure'),im=make('img');im.src=photo.url;im.alt=photo.caption;figure.append(im,make('figcaption',photo.caption));gallery.append(figure)}else gallery.append(visual(p));
