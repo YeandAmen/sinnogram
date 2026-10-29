@@ -362,6 +362,11 @@ func fail(w http.ResponseWriter, status int, msg string) {
 }
 func handler(p provider) http.Handler {
 	mux := http.NewServeMux()
+	services := servicesBridge()
+	mux.Handle("GET /api/services/", services)
+	mux.Handle("POST /api/services/", services)
+	mux.Handle("GET /api/auth/", services)
+	mux.Handle("POST /api/auth/", services)
 	mux.Handle("GET /api/tiles/", newTileRelay())
 	gate := make(chan struct{}, 2)
 	mux.HandleFunc("GET /api/config", func(w http.ResponseWriter, r *http.Request) {
@@ -678,13 +683,15 @@ func handler(p provider) http.Handler {
 		jsonOut(w, 200, buildResult(t, m, p.Name()))
 	})
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, "/vendor/") && r.URL.Path != "/scene.js" && r.URL.Path != "/" && r.URL.Path != "/app.js" && r.URL.Path != "/location.js" && r.URL.Path != "/style.css" && r.URL.Path != "/manifest.webmanifest" && r.URL.Path != "/icon.svg" && r.URL.Path != "/icon-192.png" && r.URL.Path != "/icon-512.png" && r.URL.Path != "/apple-touch-icon.png" {
+		if !strings.HasPrefix(r.URL.Path, "/vendor/") && r.URL.Path != "/scene.js" && r.URL.Path != "/" && r.URL.Path != "/app.js" && r.URL.Path != "/location.js" && r.URL.Path != "/services" && r.URL.Path != "/services-core.js" && r.URL.Path != "/services.js" && r.URL.Path != "/services.css" && r.URL.Path != "/style.css" && r.URL.Path != "/manifest.webmanifest" && r.URL.Path != "/icon.svg" && r.URL.Path != "/icon-192.png" && r.URL.Path != "/icon-512.png" && r.URL.Path != "/apple-touch-icon.png" {
 			http.NotFound(w, r)
 			return
 		}
 		path := r.URL.Path
 		if path == "/" {
 			path = "/index.html"
+		} else if path == "/services" {
+			path = "/services.html"
 		}
 		b, e := assets.ReadFile("web" + path)
 		if e != nil {
@@ -722,7 +729,7 @@ func handler(p provider) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		w.Header().Set("Permissions-Policy", "geolocation=(self)")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://tile.openstreetmap.org; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://tile.openstreetmap.org https://*.public.blob.vercel-storage.com; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'")
 		allowed := r.Host == "127.0.0.1:8080" || r.Host == "localhost:8080" || r.Host == "sinnogram.vercel.app" || r.Host == "axis-abuja-test.vercel.app"
 		for _, key := range []string{"AXIS_PUBLIC_HOST", "VERCEL_URL", "VERCEL_PROJECT_PRODUCTION_URL"} {
 			if h := os.Getenv(key); h != "" && r.Host == h {

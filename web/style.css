@@ -199,3 +199,9 @@
 .dark-button:active{transform:translateY(1px)}
 .result-waypoint{width:8px;height:8px;flex:none;border:1px solid #827c69;border-radius:50%;margin-right:8px}
 .search-result:hover .result-waypoint{background:#72785d;border-color:#72785d}
+/* Services is one destination in the existing navigation, not a homepage section. */
+.header nav a.nav-item{text-decoration:none;display:inline-block}
+@media(max-width:700px){#nav-map{display:none}}
+@media(max-width:380px){.header{padding-left:12px;padding-right:12px;gap:8px}.header nav{gap:6px}.header .nav-item{font-size:9px;letter-spacing:.3px}.header .live-nav{min-width:30px}.header .brand-name{font-size:14px}}
+
+.service-visit{margin:20px 0;padding:14px 0;border-bottom:1px solid var(--line)}.service-visit p{font-size:14px}.service-visit>div{display:flex;justify-content:space-between;gap:16px}.service-visit .inline-link{font-size:12px}

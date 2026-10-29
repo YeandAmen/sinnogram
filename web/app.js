@@ -1,6 +1,6 @@
 const $ = id => document.getElementById(id);
 let config, startPlace, stops = [], result = null, busy = false, activePlace = null;
-let stopMinutes={},sharedDraft=null,pinIssue=null;
+let stopMinutes={},sharedDraft=null,pinIssue=null,serviceVisit=null;
 let tripStep=0, tripStarted=false, tripComplete=false;
 let locationRequest=0, capturedFix=null, locating=false, captureRecovery=null;
 function clearCaptureRecovery(){
@@ -121,6 +121,9 @@ function renderLiveLocation(message=''){
   if(mapMode==='live'&&!pendingPin){
     $('map-instruction-title').textContent=liveState==='off'?'Live location is off.':fresh?(liveFix.needsConfirmation?'Approximate location.':'Your location, live.'):liveState==='denied'?'Location permission is blocked.':liveState==='paused'?'Live location is paused.':'Finding your location.';
     $('map-instruction-help').textContent=liveState==='off'?'Tap My location to resume, or tap the map to add a stop.':fresh?'Follow your movement, or drag the map to explore.':'Keep this site open. Check location permission and device Location Services.';
+  }else if(pendingPin?.action==='service'&&serviceVisit){
+    $('map-instruction-title').textContent='Choose the meeting entrance.';
+    $('map-instruction-help').textContent=serviceVisit.name+' · '+serviceVisit.area;
   }else{
     $('map-instruction-title').textContent='Find the entrance. Place your pin.';
     $('map-instruction-help').textContent='Tap the map or drag the pin to the exact building.';
@@ -616,11 +619,43 @@ function closeMap(restore=true){
   if(restore){openPanel(mapOrigin==='detail'?'detail':mapOrigin==='plan'||mapOrigin==='bulk'?'plan':null);if(mapOrigin==='bulk')showBulk()}
   renderLiveLocation();
 }
+function clearServiceVisit(){
+  serviceVisit=null;$('service-visit').hidden=true;
+  try{sessionStorage.removeItem('sinnogram-service-draft-v1')}catch{}
+  if(typeof location!=='undefined'){const u=new URL(location.href);u.searchParams.delete('service');history.replaceState(null,'',u.pathname+u.search+u.hash)}
+}
+function openServiceVisit(){
+  if(!serviceVisit)return;
+  openMap({name:serviceVisit.name,unlocated:true},'service','plan');pendingPin.serviceID=serviceVisit.id;
+  const area=config.samples.find(p=>p.name.toLowerCase().includes(serviceVisit.area.toLowerCase()));
+  if(area)map.setView([area.lat,area.lng],13);
+  $('map-instruction-title').textContent='Choose the meeting entrance.';
+  $('map-instruction-help').textContent=serviceVisit.name+' · '+serviceVisit.area;
+  setLabel($('confirm-pin'),'Add this visit');
+}
+function readServiceVisit(){
+  if(typeof location==='undefined')return;
+  const params=new URLSearchParams(location.search);
+  if(params.has('plan'))openPanel('plan');
+  if(!params.has('service'))return;
+  let draft;try{draft=sinnogramServices.readDraft(sessionStorage.getItem('sinnogram-service-draft-v1'))}catch{}
+  if(!draft||draft.id!==params.get('service')){openPanel('plan');error('This visit draft expired. Open Services to choose the visit again.');return}
+  serviceVisit=draft;$('service-visit').hidden=false;$('service-visit-name').textContent=draft.name+' · '+draft.minutes+' min';
+  if(stops.length>=10){openPanel('plan');error('Your trip already has 10 stops. Remove one to add this visit.');return}
+  openServiceVisit();
+}
+$('service-visit-map').onclick=openServiceVisit;$('service-visit-cancel').onclick=clearServiceVisit;
 $('confirm-pin').onclick=()=>{
   if(!pendingPin)return;const {place,action,coords}=pendingPin;if(action==='inspect'){closeMap();return}
   if(tileLoaded===0||(needsPin(place)&&!pinMoved))return;
   const confirmed={name:place.name,lat:coords.lat,lng:coords.lng};
   if(action==='bulk'){confirmBulkPin(confirmed);return}
+  if(action==='service'){
+    if(!serviceVisit||pendingPin.serviceID!==serviceVisit.id){closeMap(false);openPanel('plan');error('Choose the service visit again.');return}
+    if(!addStop(confirmed))return;
+    stopMinutes[`${confirmed.lat},${confirmed.lng},${confirmed.name}`]=serviceVisit.minutes;
+    clearServiceVisit();pendingPin=null;closeMap(false);openPanel('plan');save();render();$('search-status').textContent='Visit added to your day.';return;
+  }
   if(action==='repair'){
     const index=pendingPin.repairIndex;
     if(!Number.isInteger(index)||!sameVisit(stops[index],place)){closeMap(false);openPanel('plan');error('Your stop list changed. Plan again to check its pins.');return}
@@ -780,7 +815,7 @@ $('about').onclick=()=>$('about-dialog').showModal();$('close-about').onclick=()
       }
       save();
     }
-    render();readSharedTrip();
+    render();readSharedTrip();readServiceVisit();
 
   }catch(e){$('footer-status').textContent='Connection unavailable';openPanel('plan');error(e.message)}
 })();

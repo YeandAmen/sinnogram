@@ -9,7 +9,7 @@
 | Public OSM beta | `AXIS_PROVIDER=osm`, `SINNOGRAM_PUBLIC_BETA=1`, `SINNOGRAM_GATE_URL`, `BLOB_READ_WRITE_TOKEN` | Shared conditional-write lease across all server instances; fails closed if coordination is unavailable |
 | Google | `GOOGLE_MAPS_API_KEY` | Nigerian address geocoding and traffic-unaware driving matrices; billing and quotas required |
 
-The live app has no password gate and does not create user accounts. Keep provider credentials and storage credentials in the host's secret environment. Never put them in the frontend or commit a real `.env`.
+Trip planning has no password gate or account requirement. Services has optional accounts for enquiries and provider profiles. Keep provider credentials and storage credentials in the host's secret environment. Never put them in the frontend or commit a real `.env`.
 
 ## Shared free-provider access
 
@@ -153,3 +153,14 @@ After planning, the street map displays visit-order pins. `POST /api/route` retr
 `GET /api/suggest?q=` searches the local catalog only, including a partial final word. It never calls Nominatim as the user types. Same-name address records are grouped in the UI, with alternate records still accessible; distinct mapped branches remain separate.
 
 Favourites and named trips are stored in this browser under `sinnogram-library-v1` until removed. Named trips omit a device-captured GPS origin. Share links carry destination names, coordinates and planned stop durations in the URL fragment, omit the starting point, and require an explicit import. WhatsApp sharing opens a prefilled share flow; it does not send a message automatically. Per-stop durations add to the estimated driving time; no live traffic is included.
+
+
+## Sinnogram Services
+
+`/services` is a separate directory screen using the existing `YeandAmen/whisk-n-wizzle` backend at `https://fyield-services.vercel.app`. Existing provider profiles, portfolio photos, reviews and accounts remain in that service. The Go bridge exposes only the allowlisted public and owner-scoped endpoints in `services.go`; administrative and deletion APIs are excluded. No new database, billing integration or payment flow is introduced.
+
+Browsing and adding a visit do not require an account. Enquiries, replies and publishing a provider profile use the directory's email-code sign-in (or its configured password mode). Mail delivery and the database remain configured on the directory deployment. Verification emails use the Sinnogram name. Authentication cookies are scoped to the current Sinnogram host, so an existing directory account may need to sign in again. POST requests require the exact same-origin JSON request before translating the origin for the existing backend. Responses are never cached. Deployments must retain HTTPS.
+
+Public profiles and portfolio images are visible to everyone; enquiries remain visible to participants and the existing directory administrators. The bridge sends neither the trip nor GPS updates to the directory. Adding a service visit carries only its public name, area and chosen duration in temporary, same-tab browser storage (30-minute expiry). Service areas are not exact addresses: the user must confirm a meeting entrance on loaded street-map tiles before a visit becomes a route stop. Existing origins, stops and progress are preserved until the usual add-stop/replan flow. Enquiries do not book appointments.
+
+The directory's existing authentication and per-user write limits still apply. The bridge does not remove those limits; shared upstream IP limits may constrain beta traffic. An unavailable directory shows a retry state without disabling the planner. Service photos accept only the existing public Vercel Blob host pattern, and uploaded photos require explicit publishing permission. No test accounts or enquiries should be created in production as release checks: use a local fixture for those write flows and verify deployed public reads separately.
