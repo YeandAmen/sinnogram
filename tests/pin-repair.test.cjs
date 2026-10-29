@@ -9,7 +9,7 @@ test('an unreachable pin offers a focused repair that replaces the stop and pres
  assert.equal(a.$('error').children.join(''),'');
  const row=a.$('stops').children[0],note=row.children[4];
  assert.equal(note.children[0].children.join(''),'Choose a driving entrance');
- assert.equal(note.children[1].children.filter(x=>typeof x==='string').join(''),'Choose entrance ');
+ assert.equal(note.children[1].children.filter(x=>typeof x==='string').join(''),'Choose entrance');
  assert.equal(row.scrolls,1);
  vm.runInContext('openMap=(place,action)=>{pendingPin={place,action}}',a.context);
  note.children[1].onclick();assert.equal(vm.runInContext('pendingPin.repairIndex',a.context),0);

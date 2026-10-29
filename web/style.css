@@ -190,3 +190,12 @@
 .start-entry{display:inline-flex;align-items:center;gap:22px;flex:none;min-height:44px;padding:10px 0;border-bottom:1px solid var(--ink);font-size:15px;line-height:1.4;text-align:left}
 .start-entry .ui-icon{width:16px;height:16px}.start-entry:hover{color:#7b4d36;border-color:currentColor}
 @media(max-width:700px){.timeline.empty-start{min-height:112px}.start-entry{font-size:14px}}
+
+/* Sinnogram actions use its signature and destination marks, without arrows. */
+.start-entry{gap:12px;padding:10px 16px;border:1px solid #aaa697;border-radius:999px;background:var(--paper);font-size:14px;font-weight:400;transition:background .18s,color .18s,border-color .18s}
+.start-entry .ui-icon{width:22px;height:22px;min-width:22px}
+.start-entry:hover{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.dark-button::after{content:'';display:block;flex:none;width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.8}
+.dark-button:active{transform:translateY(1px)}
+.result-waypoint{width:8px;height:8px;flex:none;border:1px solid #827c69;border-radius:50%;margin-right:8px}
+.search-result:hover .result-waypoint{background:#72785d;border-color:#72785d}
