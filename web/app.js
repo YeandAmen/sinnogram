@@ -17,7 +17,23 @@ let mapTiles, tileMode='direct', tileLoaded=0, tileFailed=0, tileTimer;
 let liveFix=null,liveState='off',liveWanted=true,livePreference=null,liveFollow=false,liveCenterPending=false,liveMapMarker,liveAccuracy,mapMode='inspect';
 const km = value => `${(value / 1000).toFixed(1)} km`;
 const number = value => String(value).padStart(2, '0');
-const clean = p => ({name:p.name,lat:Number(p.lat),lng:Number(p.lng)});
+const validPoint = p => !!p&&Number.isFinite(p.lat)&&Number.isFinite(p.lng)&&Math.abs(p.lat)<=90&&Math.abs(p.lng)<=180;
+const clean = p => {
+  const point={name:p.name,lat:Number(p.lat),lng:Number(p.lng)};
+  if(validPoint(p.entrance))point.entrance={lat:p.entrance.lat,lng:p.entrance.lng};
+  const id=p.record_id||p.id;if(typeof id==='string'&&id.length<=150)point.record_id=id;
+  if(typeof (p.source_url||p.source)==='string')point.source_url=p.source_url||p.source;
+  if(typeof p.category==='string')point.category=p.category;
+  if(typeof p.access==='string')point.access=p.access;
+  return point;
+};
+const requestPoint = p => ({name:p.name,lat:validPoint(p.entrance)?p.entrance.lat:p.lat,lng:validPoint(p.entrance)?p.entrance.lng:p.lng});
+function restorePlaceDetails(route,points){
+  for(const leg of route.legs||[])for(const key of ['from','to']){
+    const original=points.find(p=>sameVisit(requestPoint(p),leg[key]));if(original)leg[key]=clean(original);
+  }
+  return route;
+}
 const same = (a,b) => !!a && !!b && a.lat === b.lat && a.lng === b.lng;
 const sameVisit = (a,b) => same(a,b) && a.name.trim().toLowerCase()===b.name.trim().toLowerCase();
 const needsPin = p => p?.match==='street'||p?.match==='uncertain';
@@ -54,7 +70,7 @@ function entranceAction(index,place){
  const fix=el('button','Choose entrance','inline-link');fix.type='button';fix.onclick=()=>{
    openMap({...place,match:'street'},index===0?'start':'repair','plan');
    if(index===0&&startSource==='gps'){pendingPin.startSource='gps';pendingPin.capturedAt=startCapturedAt}
-   if(index>0)pendingPin.repairIndex=index-1;
+   if(index>0){pendingPin.repairIndex=index-1;pendingPin.originalPlace=clean(place)}
  };note.append(fix);return note;
 }
 function routeError(failure){
@@ -312,6 +328,8 @@ function detail(candidate,kind,index){
   if(kind==='candidate'&&!candidate.unlocated&&typeof L!=='undefined')previewCandidate(candidate);
   if(kind==='stop'&&result){const back=el('button','Back to route map','secondary');back.onclick=()=>showCityRoute();actions.append(back)}
   if(validFixed(candidate)&&!candidate.unlocated&&!needsPin(candidate)){const fav=el('button','Save as Home, Work or favourite','inline-link');fav.onclick=openLibrary;actions.append(fav)}
+  const correction=el('button','Improve this place','inline-link');correction.onclick=()=>window.sinnogramPlaces?.open(candidate);actions.append(correction);
+  if(validPoint(candidate.entrance))actions.append(el('p','A separate driving entrance is available. Directions use that entrance.','micro'));
   renderTripProgress(kind==='stop'?index:-1);
   $('detail-panel').scrollTop=0;
   renderScene();
@@ -334,7 +352,9 @@ function searchResultButton(p){
  const b=el('button',undefined,'search-result'),copy=el('div');
  copy.append(el('small',p.unlocated?'Address lead · no verified pin':p.match==='uncertain'?'Business listing · verify location':p.match==='landmark'?'Landmark address verified':p.match==='street'?'Area / street · pin required':'Mapped place'),el('strong',title(p)));
  const address=p.name.split(' · ').slice(1).join(' · ')||p.name.split(',').slice(1).join(',').trim();if(address)copy.append(el('p',address,'search-address'));
- if(p.category)copy.append(el('small',p.category.replaceAll('_',' '),'place-category'));
+  if(p.category)copy.append(el('small',p.category.replaceAll('_',' '),'place-category'));
+  if(p.verification)copy.append(el('small',p.verification==='entrance_verified'?'Reviewed driving entrance':p.verification==='address'?'Reviewed address lead':'Reviewed place pin','place-verification'));
+  if(p.access&&p.access!=='public'&&p.access!=='yes')copy.append(el('small','Access: '+p.access,'place-access'));
  b.classList.add(p.unlocated||needsPin(p)?'needs-verification':'mapped-result');b.append(copy,el('span','', 'result-waypoint'));b.onclick=()=>showCandidate(p);return b;
 }
 function showSearch(data){
@@ -352,9 +372,14 @@ function showSearch(data){
     const help=el('p','Google Maps has its own business listings. This opens Google; it does not import or verify a pin in Sinnogram.','micro');root.append(help);
     const b=el('button','Place this address on the map','inline-link');b.onclick=()=>openMap({name:data.query,lat:mapAnchor().lat,lng:mapAnchor().lng,match:'street'},'stop','plan');root.append(b)
   }
+  if(!data.results.length){const suggest=el('button','Suggest this missing place','inline-link');suggest.onclick=()=>window.sinnogramPlaces?.open(null,data.query);root.append(suggest)}
 }
 function revealPlaceSearch(){
   $('search-form').scrollIntoView({block:'start',behavior:'auto'});
+}
+function localSuggestions(query,prefix=true,signal){
+  if(!startPlace)return api('/api/suggest?q='+encodeURIComponent(query),{signal});
+  return api('/api/suggest',{method:'POST',headers:{'Content-Type':'application/json'},signal,body:JSON.stringify({query,prefix,near:{lat:startPlace.lat,lng:startPlace.lng}})});
 }
 async function runPlaceSearch(query,live=false){
   const q=query.trim(),button=$('search-submit'),status=$('search-status');
@@ -367,7 +392,9 @@ async function runPlaceSearch(query,live=false){
   button.disabled=true;setLabel(button,'Searching…');$('search-form').setAttribute('aria-busy','true');
   status.classList.remove('search-failure');status.textContent=`Looking for “${q}”…`;$('matches').replaceChildren();error('');revealPlaceSearch();
   try{
-    const data=await api('/api/search?'+(live?'live=1&':'')+'q='+encodeURIComponent(q),{signal:controller.signal});
+    let data;
+    if(startPlace&&!live)data=await localSuggestions(q,false,controller.signal);
+    if(!data?.results?.length)data=await api('/api/search?'+(live?'live=1&':'')+'q='+encodeURIComponent(q),{signal:controller.signal});
     if(request!==searchRequest)return;
     showSearch(data);revealPlaceSearch();
   }catch(e){
@@ -382,7 +409,7 @@ async function runPlaceSearch(query,live=false){
 }
 setLabel($('search-submit'),'Find places');
 $('search-form').onsubmit=e=>{e.preventDefault();runPlaceSearch($('search').value)};
-$('search').oninput=()=>{clearTimeout(searchTimer);const q=$('search').value.trim();const request=++searchRequest;if(searchController)searchController.abort();$('matches').replaceChildren();if(q.length<2){$('search-status').textContent='';return}$('search-status').textContent='Finding suggestions…';searchTimer=setTimeout(async()=>{try{const data=await api('/api/suggest?q='+encodeURIComponent(q));if(request===searchRequest&&$('search').value.trim()===q)showSearch(data)}catch{if(request===searchRequest)$('search-status').textContent='Use Find places to try a full search.'}},350)};
+$('search').oninput=()=>{clearTimeout(searchTimer);const q=$('search').value.trim();const request=++searchRequest;if(searchController)searchController.abort();$('matches').replaceChildren();if(q.length<2){$('search-status').textContent='';return}$('search-status').textContent='Finding suggestions…';searchTimer=setTimeout(async()=>{try{const data=await localSuggestions(q);if(request===searchRequest&&$('search').value.trim()===q)showSearch(data)}catch{if(request===searchRequest)$('search-status').textContent='Use Find places to try a full search.'}},350)};
 $('search').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();$('search-form').requestSubmit($('search-submit'))}};
 function bulkUsable(p){return !!p&&!p.unlocated&&!needsPin(p)&&Number.isFinite(p.lat)&&Number.isFinite(p.lng)&&Math.abs(p.lat)<=90&&Math.abs(p.lng)<=180}
 function bulkChoice(row){return row.choice>=0?row.candidates[row.choice]:null}
@@ -471,6 +498,7 @@ function previewCandidate(place){
   previewMap.attributionControl.setPrefix(false);
   L.tileLayer('/api/tiles/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(previewMap);
   L.marker([place.lat,place.lng],{icon:L.divIcon({className:'preview-marker',html:'<span class="preview-dot"></span>',iconSize:[20,20],iconAnchor:[10,10]})}).addTo(previewMap);
+  if(validPoint(place.entrance))L.circleMarker([place.entrance.lat,place.entrance.lng],{radius:6,color:'#58704b',fillOpacity:.2}).bindTooltip('Driving entrance').addTo(previewMap);
 }
 function showCityRoute(fit=true){
   if(!result?.legs?.length)return;
@@ -505,7 +533,7 @@ async function loadRoadLine(){
   const planned=result,request=++routeRequest;roadPending=planned;drawCityRoute();
   const points=journeyPoints();let destinations=points.slice(1),round=false;
   if(destinations.length&&sameVisit(destinations[destinations.length-1],points[0])){destinations=destinations.slice(0,-1);round=true}
-  try{const data=await api('/api/route',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({start:clean(points[0]),stops:destinations.map(clean),strategy:'input',round_trip:round})});
+  try{const data=await api('/api/route',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({start:requestPoint(points[0]),stops:destinations.map(requestPoint),strategy:'input',round_trip:round})});
     if(request!==routeRequest||result!==planned)return;
     if(!Array.isArray(data.coordinates)||data.coordinates.length<2)throw Error('Road line unavailable');
     planned.road_line=data.coordinates;save();
@@ -514,7 +542,7 @@ async function loadRoadLine(){
 }
 
 function readLibrary(){try{const v=JSON.parse(localStorage.getItem('sinnogram-library-v1'));if(v&&Array.isArray(v.places)&&Array.isArray(v.trips))return {places:v.places.filter(x=>x&&typeof x.label==='string'&&validFixed(x.place)).slice(0,30),trips:v.trips.filter(x=>x&&typeof x.name==='string'&&validTripDraft(x.draft)).slice(0,20)}}catch{}return {places:[],trips:[]}}
-function validFixed(p){return !!p&&typeof p.name==='string'&&p.name.trim().length>0&&p.name.length<=300&&Number.isFinite(p.lat)&&Number.isFinite(p.lng)&&Math.abs(p.lat)<=90&&Math.abs(p.lng)<=180}
+function validFixed(p){return !!p&&typeof p.name==='string'&&p.name.trim().length>0&&p.name.length<=300&&validPoint(p)&&(p.entrance==null||validPoint(p.entrance))}
 function validTripDraft(v){return !!v&&Array.isArray(v.stops)&&v.stops.length>0&&v.stops.length<=10&&v.stops.every(validFixed)&&(!v.start||validFixed(v.start))}
 function storeLibrary(v){try{localStorage.setItem('sinnogram-library-v1',JSON.stringify(v));return true}catch{$('library-status').textContent='Your browser could not save this. Try allowing local storage.';return false}}
 function minutesFor(p){return Math.max(0,Math.min(1440,Number(stopMinutes[`${p.lat},${p.lng},${p.name}`])||0))}
@@ -605,7 +633,7 @@ function openMap(place=null,action='inspect',origin='explore'){
   $('nav-map').classList.add('active');$('nav-explore').classList.remove('active');mapOrigin=origin;pendingPin=place?{place,action}:null;pinMoved=false;
   liveFollow=action==='live';
   mapMode=action;
-  $('map-confirm').hidden=!place;setLabel($('confirm-pin'),action==='start'?'Set starting point':action==='inspect'?'Back to place':action==='bulk'?'Confirm this stop':action==='repair'?'Update this pin':'Add confirmed stop');
+  $('map-confirm').hidden=!place;setLabel($('confirm-pin'),action==='start'?'Set starting point':action==='inspect'?'Back to place':action==='bulk'?'Confirm this stop':action==='repair'?'Use this driving entrance':action==='registry_location'?'Use this place pin':action==='registry_entrance'?'Use this entrance pin':'Add confirmed stop');
   initMap();map.invalidateSize();mapPins.clearLayers();if(editMarker){map.removeLayer(editMarker);editMarker=null;}
   journeyPoints().forEach(p=>L.circleMarker([p.lat,p.lng],{radius:5,weight:1,color:'#35342c',fillColor:'#f1eee5',fillOpacity:1}).bindTooltip(el('span',title(p))).addTo(mapPins));
   if(place){map.setView([place.lat,place.lng],unlocated?12:needsPin(place)?16:17);setMapPin(L.latLng(place.lat,place.lng));}
@@ -617,6 +645,7 @@ function closeMap(restore=true){
   routeMode=false;$('experience').classList.remove('route-view');$('route-banner').hidden=true;
   $('street-map').hidden=true;$('map-instruction').hidden=true;$('map-confirm').hidden=true;$('stage-heading').hidden=false;$('nav-map').classList.remove('active');
   if(restore){openPanel(mapOrigin==='detail'?'detail':mapOrigin==='plan'||mapOrigin==='bulk'?'plan':null);if(mapOrigin==='bulk')showBulk()}
+  if(restore&&mapOrigin==='registry')window.sinnogramPlaces?.resume();
   renderLiveLocation();
 }
 function clearServiceVisit(){
@@ -648,7 +677,9 @@ $('service-visit-map').onclick=openServiceVisit;$('service-visit-cancel').onclic
 $('confirm-pin').onclick=()=>{
   if(!pendingPin)return;const {place,action,coords}=pendingPin;if(action==='inspect'){closeMap();return}
   if(tileLoaded===0||(needsPin(place)&&!pinMoved))return;
-  const confirmed={name:place.name,lat:coords.lat,lng:coords.lng};
+  if(action==='registry_location'||action==='registry_entrance'){window.sinnogramPlaces?.acceptPin(action,coords);return}
+  const confirmed=clean({...place,lat:coords.lat,lng:coords.lng});
+  if(pinMoved)delete confirmed.entrance;
   if(action==='bulk'){confirmBulkPin(confirmed);return}
   if(action==='service'){
     if(!serviceVisit||pendingPin.serviceID!==serviceVisit.id){closeMap(false);openPanel('plan');error('Choose the service visit again.');return}
@@ -658,10 +689,11 @@ $('confirm-pin').onclick=()=>{
   }
   if(action==='repair'){
     const index=pendingPin.repairIndex;
-    if(!Number.isInteger(index)||!sameVisit(stops[index],place)){closeMap(false);openPanel('plan');error('Your stop list changed. Plan again to check its pins.');return}
-    if([startPlace,...stops.filter((_,i)=>i!==index)].some(p=>sameVisit(p,confirmed))){$('pin-position').textContent='That named location is already in your trip. Choose another entrance.';return}
-    const minutes=minutesFor(stops[index]);delete stopMinutes[`${place.lat},${place.lng},${place.name}`];stops[index]=clean(confirmed);if(minutes)stopMinutes[`${confirmed.lat},${confirmed.lng},${confirmed.name}`]=minutes;
-    pendingPin=null;invalidate();closeMap(false);openPanel('plan');$('search-status').textContent='Pin updated. Plan your route again.';return;
+    if(!Number.isInteger(index)||!sameVisit(stops[index],pendingPin.originalPlace||place)){closeMap(false);openPanel('plan');error('Your stop list changed. Plan again to check its pins.');return}
+    const repaired={...stops[index],entrance:{lat:coords.lat,lng:coords.lng}};
+    if([startPlace,...stops.filter((_,i)=>i!==index)].some(p=>sameVisit(requestPoint(p),requestPoint(repaired)))){$('pin-position').textContent='That named driving entrance is already in your trip.';return}
+    stops[index]=clean(repaired);
+    pendingPin=null;invalidate();closeMap(false);openPanel('plan');$('search-status').textContent='Driving entrance updated. Plan your route again.';return;
   }
   if(action==='start'){const fromGPS=pendingPin.startSource==='gps';if(fromGPS&&pinMoved)confirmed.name=`Chosen starting pin · ${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}`;setStart(confirmed,{source:fromGPS?'gps':'manual',capturedAt:pendingPin.capturedAt||null});$('location-status').textContent=fromGPS?'Starting pin confirmed for this visit. Capture your location again after moving.':'Starting point selected on the map.'}else if(!addStop(confirmed))return;
   pendingPin=null;closeMap(false);openPanel('plan');$('matches').replaceChildren();$('search-status').classList.remove('search-failure');$('search-status').textContent='Pin confirmed. Location added to your day.';$('search').value='';
@@ -784,7 +816,7 @@ $('optimize').onclick=async()=>{
   if(!config||busy||locating)return;if(!startPlace){error('Capture your current location or choose a starting point first.');return}if(!stops.length){error('Add at least one destination first.');return}
   busy=true;error('');document.querySelectorAll('#plan-panel button,#plan-panel input,#plan-panel select,#plan-panel textarea').forEach(e=>e.disabled=true);$('optimize').textContent='Finding your best order…';
   const requestedOrigin=startPlace;
-  try{result=await api('/api/optimize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({start:startPlace,stops,round_trip:$('return').checked,strategy:$('strategy').value})});if(same(startPlace,requestedOrigin))for(const leg of result.legs){if(sameVisit(leg.from,requestedOrigin))leg.from=startPlace;if(sameVisit(leg.to,requestedOrigin))leg.to=startPlace}resetProgress();if(startAccuracy>150)result.notice=`Approximate starting point: device-reported accuracy about ${Math.round(startAccuracy)} m. Distances and visit order depend on this approximate point. `+result.notice;save();render();showCityRoute();$('footer-status').textContent='Abuja, Nigeria'}catch(e){openPanel('plan');routeError(e)}finally{busy=false;document.querySelectorAll('#plan-panel button,#plan-panel input,#plan-panel select,#plan-panel textarea').forEach(e=>e.disabled=false);setLabel($('optimize'),'Plan route')}
+   try{const requestedPlaces=[requestedOrigin,...stops];result=restorePlaceDetails(await api('/api/optimize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({start:requestPoint(startPlace),stops:stops.map(requestPoint),round_trip:$('return').checked,strategy:$('strategy').value})}),requestedPlaces);if(same(startPlace,requestedOrigin))for(const leg of result.legs){if(sameVisit(leg.from,requestedOrigin))leg.from=startPlace;if(sameVisit(leg.to,requestedOrigin))leg.to=startPlace}resetProgress();if(startAccuracy>150)result.notice=`Approximate starting point: device-reported accuracy about ${Math.round(startAccuracy)} m. Distances and visit order depend on this approximate point. `+result.notice;save();render();showCityRoute();$('footer-status').textContent=''}catch(e){openPanel('plan');routeError(e)}finally{busy=false;document.querySelectorAll('#plan-panel button,#plan-panel input,#plan-panel select,#plan-panel textarea').forEach(e=>e.disabled=false);setLabel($('optimize'),'Plan route')}
 };
 $('download').onclick=()=>{if(!result)return;const text=['SINNOGRAM / YOUR DAY IN ABUJA',`Start: ${startPlace.name}`,`Total: ${km(result.meters)} · about ${Math.ceil(result.seconds/60)} minutes driving`,`${stopTimeTotal()} minutes planned at stops`,result.notice,'',...result.legs.map((l,i)=>`${i+1}. ${l.to.name}\nFrom ${l.from.name}\n${km(l.meters)}\nGoogle: ${l.google}\nApple: ${l.apple}`)].join('\n');const url=URL.createObjectURL(new Blob([text],{type:'text/plain'}));const a=el('a');a.href=url;a.download='sinnogram-itinerary.txt';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 $('begin').onclick=$('nav-plan').onclick=()=>{closeMap(false);openPanel('plan')};$('nav-explore').onclick=explore;$('nav-map').onclick=()=>result?showCityRoute():openMap();$('close-plan').onclick=$('close-detail').onclick=()=>result?showCityRoute():explore();

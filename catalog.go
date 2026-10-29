@@ -14,7 +14,7 @@ import (
 
 // Public, versioned source snapshots. Personal trips and GPS fixes never enter this catalog.
 //
-//go:embed data/osm_locations.json data/seed_public_locations.csv data/overture_places.json data/reviewed_places.json data/building_leads.json
+//go:embed data/osm_locations.json data/seed_public_locations.csv data/overture_places.json data/reviewed_places.json data/building_leads.json data/public_place_leads.json
 var catalogFiles embed.FS
 
 type catalogRecord struct {
@@ -31,6 +31,8 @@ type catalogRecord struct {
 	Confidence  *float64 `json:"confidence"`
 	UpdatedAt   string   `json:"updated_at"`
 	AreaCouncil string   `json:"area_council"`
+	Access      string   `json:"access"`
+	SourceNote  string   `json:"source_note"`
 }
 type catalogSnapshot struct {
 	Release           string          `json:"release"`
@@ -56,6 +58,7 @@ type locationCatalog struct {
 	Overture  catalogSnapshot
 	Reviewed  catalogSnapshot
 	Buildings catalogSnapshot
+	Leads     catalogSnapshot
 	Coverage  catalogCoverage
 }
 
@@ -106,9 +109,12 @@ func loadCatalog() locationCatalog {
 			match = "street"
 			description = "Mapped town or area only. Choose the exact destination entrance before routing."
 		}
-		c.add(Candidate{Place: Place{placeLabel(r.Name, r.Address), r.Lat, r.Lng}, Match: match, Description: description, Source: r.Source, ID: r.ID, Category: r.Category, AreaCouncil: r.AreaCouncil, UpdatedAt: c.Snapshot.SnapshotAt, License: "ODbL-1.0"}, append([]string{r.Name}, r.Aliases...), r.Address, r.Precision == "street")
+		if r.Access != "" && r.Access != "public" && r.Access != "yes" {
+			description += " Access may be restricted; confirm the appropriate entrance."
+		}
+		c.add(Candidate{Place: Place{placeLabel(r.Name, r.Address), r.Lat, r.Lng}, Match: match, Description: description, Source: r.Source, ID: r.ID, Category: r.Category, AreaCouncil: r.AreaCouncil, Access: r.Access, UpdatedAt: c.Snapshot.SnapshotAt, License: "ODbL-1.0"}, append([]string{r.Name}, r.Aliases...), r.Address, r.Precision == "street")
 	}
-	for _, path := range []string{"data/overture_places.json", "data/reviewed_places.json", "data/building_leads.json"} {
+	for _, path := range []string{"data/overture_places.json", "data/reviewed_places.json", "data/building_leads.json", "data/public_place_leads.json"} {
 		var snapshot catalogSnapshot
 		b, e := catalogFiles.ReadFile(path)
 		if e != nil {
@@ -122,6 +128,8 @@ func loadCatalog() locationCatalog {
 			c.Overture = snapshot
 		} else if strings.Contains(path, "building_leads") {
 			c.Buildings = snapshot
+		} else if strings.Contains(path, "public_place_leads") {
+			c.Leads = snapshot
 		} else {
 			c.Reviewed = snapshot
 		}
@@ -144,7 +152,10 @@ func loadCatalog() locationCatalog {
 				match = "uncertain"
 				description = "Low-confidence business listing from Overture Maps. Its location may be outdated or approximate. Check the branch address and move the pin to the correct entrance."
 			}
-			c.add(Candidate{Place: Place{placeLabel(r.Name, r.Address), r.Lat, r.Lng}, Match: match, Unlocated: unlocated, Description: description, Source: r.Source, ID: r.ID, Category: r.Category, AreaCouncil: r.AreaCouncil, License: r.License, UpdatedAt: r.UpdatedAt}, append([]string{r.Name}, r.Aliases...), r.Address)
+			if r.SourceNote != "" {
+				description = r.SourceNote
+			}
+			c.add(Candidate{Place: Place{placeLabel(r.Name, r.Address), r.Lat, r.Lng}, Match: match, Unlocated: unlocated, Description: description, Source: r.Source, ID: r.ID, Category: r.Category, AreaCouncil: r.AreaCouncil, Access: r.Access, License: r.License, UpdatedAt: r.UpdatedAt}, append([]string{r.Name}, r.Aliases...), r.Address)
 		}
 	}
 	f, err := catalogFiles.Open("data/seed_public_locations.csv")
@@ -194,7 +205,65 @@ func (c *locationCatalog) add(p Candidate, names []string, address string, stree
 			seenNames[key] = true
 		}
 	}
-	c.entries = append(c.entries, indexedLocation{Candidate: p, words: searchWords(strings.Join(names, " ") + " " + address), names: n, street: len(street) > 0 && street[0]})
+	words := searchWords(strings.Join(names, " ") + " " + address)
+	for _, name := range names {
+		parts := searchWords(name)
+		for i := range parts {
+			for length := 2; length <= 3 && i+length <= len(parts); length++ {
+				joined, ok := joinedNameWords(parts[i : i+length])
+				if ok {
+					words = append(words, joined)
+				}
+			}
+		}
+	}
+	c.entries = append(c.entries, indexedLocation{Candidate: p, words: words, names: n, street: len(street) > 0 && street[0]})
+}
+
+func joinedNameWords(words []string) (string, bool) {
+	for _, word := range words {
+		if len(word) < 3 {
+			return "", false
+		}
+		for _, r := range word {
+			if unicode.IsDigit(r) {
+				return "", false
+			}
+		}
+	}
+	return strings.Join(words, ""), true
+}
+
+// Match spaced/compound brand names without weakening numeric address constraints.
+func queryWordsForEntry(words, entry []string) []string {
+	out := []string{}
+	for i := 0; i < len(words); i++ {
+		consumed := false
+		for length := 3; length >= 2; length-- {
+			if i+length > len(words) {
+				continue
+			}
+			joined, ok := joinedNameWords(words[i : i+length])
+			if !ok {
+				continue
+			}
+			for _, candidate := range entry {
+				if candidate == joined {
+					out = append(out, joined)
+					i += length - 1
+					consumed = true
+					break
+				}
+			}
+			if consumed {
+				break
+			}
+		}
+		if !consumed {
+			out = append(out, words[i])
+		}
+	}
+	return out
 }
 
 // A single insertion/deletion/substitution helps misspelled names, never plot numbers.
@@ -238,7 +307,28 @@ func equivalentWord(a, b string) bool {
 }
 func (c locationCatalog) Search(q string) []Candidate  { return c.search(q, false) }
 func (c locationCatalog) Suggest(q string) []Candidate { return c.search(q, true) }
-func (c locationCatalog) search(q string, prefix bool) []Candidate {
+
+func localPlaceSearch(c locationCatalog, q string, prefix bool, near ...*placePoint) []Candidate {
+	var point *placePoint
+	if len(near) > 0 {
+		point = near[0]
+	}
+	rows := c.search(q, prefix, point)
+	for _, row := range rows {
+		if row.Verification != "" {
+			return rows
+		}
+	}
+	if office := officeSearch(q); len(office) > 0 {
+		return office
+	}
+	return rows
+}
+func (c locationCatalog) search(q string, prefix bool, nearby ...*placePoint) []Candidate {
+	var near *placePoint
+	if len(nearby) > 0 {
+		near = nearby[0]
+	}
 	words := searchWords(q)
 	if len(words) == 0 {
 		return nil
@@ -250,12 +340,13 @@ func (c locationCatalog) search(q string, prefix bool) []Candidate {
 	}
 	hits := []hit{}
 	for _, entry := range c.entries {
+		lookupWords := queryWordsForEntry(words, entry.words)
 		matched, fuzzy, nameMatches := 0, 0, 0
 		variation := false
-		for _, word := range words {
+		for _, word := range lookupWords {
 			exact := false
 			for _, w := range entry.words {
-				if equivalentWord(word, w) || (prefix && word == words[len(words)-1] && len(word) >= 2 && strings.HasPrefix(w, word)) {
+				if equivalentWord(word, w) || (prefix && word == lookupWords[len(lookupWords)-1] && len(word) >= 2 && strings.HasPrefix(w, word)) {
 					variation = variation || word != w
 					exact = true
 					break
@@ -266,7 +357,7 @@ func (c locationCatalog) search(q string, prefix bool) []Candidate {
 				for _, n := range entry.names {
 					if func() bool {
 						for _, nw := range strings.Fields(n) {
-							if equivalentWord(word, nw) || (prefix && word == words[len(words)-1] && len(word) >= 2 && strings.HasPrefix(nw, word)) {
+							if equivalentWord(word, nw) || (prefix && word == lookupWords[len(lookupWords)-1] && len(word) >= 2 && strings.HasPrefix(nw, word)) {
 								return true
 							}
 						}
@@ -286,10 +377,19 @@ func (c locationCatalog) search(q string, prefix bool) []Candidate {
 				}
 			}
 		}
-		if matched != len(words) || fuzzy > 1 {
+		if matched != len(lookupWords) || fuzzy > 1 {
 			continue
 		}
 		score := matched*5 + nameMatches*4 - fuzzy*8
+		if near != nil && !entry.Unlocated {
+			distance := haversine(Place{Lat: near.Lat, Lng: near.Lng}, entry.Place)
+			if distance < 5000 {
+				score += int(60 * (1 - distance/5000))
+			}
+		}
+		if entry.Verification != "" {
+			score += 80
+		}
 		if strings.HasPrefix(entry.ID, "osm/") && entry.Match == "place" {
 			score += 35
 		}

@@ -7,11 +7,15 @@ from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parent))
 from fct import BBOX, contains, area_council, snapshot_metadata
 
+PUBLIC_AMENITIES={'school','kindergarten','college','university','hospital','clinic','doctors','dentist','pharmacy','bank','place_of_worship','restaurant','cafe','fuel','marketplace','library','community_centre','bus_station'}
+def public_venue(tags):
+    return tags.get('amenity') in PUBLIC_AMENITIES or bool(tags.get('shop') or tags.get('office') or tags.get('tourism')) or (tags.get('landuse')=='residential' and 'estate' in tags.get('name','').lower())
+
 def normalize(raw):
     rows, seen = [], set()
     for e in raw.get('elements', []):
         t = e.get('tags', {})
-        if t.get('access') == 'private' or t.get('disused') == 'yes' or t.get('abandoned') == 'yes':
+        if (t.get('access') == 'private' and not public_venue(t)) or t.get('disused') == 'yes' or t.get('abandoned') == 'yes':
             continue
         p = e if e.get('type') == 'node' else e.get('center', {})
         lat, lng = p.get('lat'), p.get('lon')
@@ -30,7 +34,7 @@ def normalize(raw):
         if not name:
             continue
         road = 'highway' in t and t['highway'] not in ['bus_stop', 'platform', 'rest_area', 'motorway_junction']
-        area = t.get('boundary')=='administrative' or t.get('place') in ['city','town','village','suburb','quarter','neighbourhood','hamlet','locality']
+        area = t.get('boundary')=='administrative' or t.get('landuse')=='residential' or t.get('place') in ['city','town','village','suburb','quarter','neighbourhood','hamlet','locality']
         # Keep far-apart same-name roads and distinct area councils searchable.
         key = (name.casefold(), address.casefold(), council, (round(lat, 2), round(lng, 2)) if road else (round(lat, 4), round(lng, 4)))
         if key in seen:
@@ -41,7 +45,7 @@ def normalize(raw):
             aliases += [v.strip() for v in t.get(k, '').split(';') if v.strip() and v.strip() != name]
         rows.append(dict(id=f"osm/{e['type']}/{e['id']}", name=name[:250], address=address[:300],
             aliases=list(dict.fromkeys(aliases)), lat=lat, lng=lng,
-            precision='street' if road else 'area' if area else 'mapped', area_council=council,
+            precision='street' if road else 'area' if area else 'mapped', area_council=council, access=t.get('access',''),
             category=next((t[k] for k in ['amenity','shop','office','tourism','healthcare','highway','building','place','leisure','landuse','natural','public_transport'] if k in t), 'address'),
             source=f"https://www.openstreetmap.org/{e['type']}/{e['id']}"))
     return {'license':'ODbL-1.0', 'attribution':'© OpenStreetMap contributors', **snapshot_metadata(),

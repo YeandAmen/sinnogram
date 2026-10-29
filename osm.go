@@ -101,16 +101,19 @@ func (o *osm) fetch(ctx context.Context, address string, out any) error {
 
 type Candidate struct {
 	Place
-	ID          string `json:"id,omitempty"`
-	Category    string `json:"category,omitempty"`
-	AreaCouncil string `json:"area_council,omitempty"`
-	UpdatedAt   string `json:"updated_at,omitempty"`
-	License     string `json:"license,omitempty"`
-	Unlocated   bool   `json:"unlocated,omitempty"`
-	Match       string `json:"match"`
-	Description string `json:"description"`
-	Source      string `json:"source,omitempty"`
-	PinSource   string `json:"pin_source,omitempty"`
+	ID           string      `json:"id,omitempty"`
+	Category     string      `json:"category,omitempty"`
+	AreaCouncil  string      `json:"area_council,omitempty"`
+	UpdatedAt    string      `json:"updated_at,omitempty"`
+	License      string      `json:"license,omitempty"`
+	Unlocated    bool        `json:"unlocated,omitempty"`
+	Match        string      `json:"match"`
+	Description  string      `json:"description"`
+	Source       string      `json:"source,omitempty"`
+	PinSource    string      `json:"pin_source,omitempty"`
+	Entrance     *placePoint `json:"entrance,omitempty"`
+	Verification string      `json:"verification,omitempty"`
+	Access       string      `json:"access,omitempty"`
 }
 type SearchResponse struct {
 	Results []Candidate `json:"results"`
@@ -209,24 +212,22 @@ func (o *osm) searchRaw(ctx context.Context, q string) ([]Candidate, error) {
 	return out, nil
 }
 func (o *osm) SearchDetailed(ctx context.Context, q string) (SearchResponse, error) {
+	return o.searchCatalogDetailed(ctx, q, catalog)
+}
+func (o *osm) searchCatalogDetailed(ctx context.Context, q string, index locationCatalog) (SearchResponse, error) {
 	q = normalizeAddress(q)
 	result := SearchResponse{Query: q, Results: []Candidate{}}
-	if rows := officeSearch(q); len(rows) > 0 {
-		result.Results = rows
-		result.Message = "Found the published Abuja office address. Check the pin details before adding."
-		return result, nil
-	}
-	if rows := catalog.Search(q); len(rows) > 0 {
+	if rows := localPlaceSearch(index, q, false); len(rows) > 0 {
 		result.Results = rows
 		result.Message = "Matches from the FCT location index. Address-only leads need a mapped pin; mapped places still need an entrance check."
 		return result, nil
 	}
 	if fallback := streetQuery(q); fallback != "" && !strings.EqualFold(fallback, q) {
-		rows := catalog.Streets(fallback)
+		rows := index.Streets(fallback)
 		if len(rows) == 0 {
 			// A street may have no suburb tags in the snapshot. Offer only named
 			// roads and explicitly leave both district and building unconfirmed.
-			for _, r := range catalog.Streets(strings.Split(fallback, ",")[0]) {
+			for _, r := range index.Streets(strings.Split(fallback, ",")[0]) {
 				if r.Match == "street" {
 					rows = append(rows, r)
 				}

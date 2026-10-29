@@ -34,3 +34,9 @@ The snapshot records its release and raw-file SHA-256. Re-import with `scripts/i
 ## Reviewed business-address leads
 
 `reviewed_places.json` keeps business-published branch addresses separate from mapped points. The Edible Creations Wuse 2 address was checked against its [contact page](https://ediblecreationsng.com/contact-us/) and [company profile](https://www.linkedin.com/company/edible-creations-limited/) on 27 October 2026. Its Wuse 2 pin has not been independently verified. The available Overture Edible Creations point is for Idu and is never substituted for a query explicitly requesting Wuse 2.
+
+## Additional public school leads and pilot cases
+
+`public_place_leads.json` contains two separately identified Fine Trust public name/address leads surfaced by search-indexed Facebook/AfricaBizInfo listings. Source URLs and explicit unverified notes are retained. Their affiliation, campus pins and entrances are not established, and no directory coordinates or short plus codes were copied into mapped entries. Source website terms apply; these are discovery leads rather than an independently reviewed map dataset.
+
+`jikwoyi_discovery_cases.json` selects 50 source-derived mapped venues within four kilometres of OSM Jikwoyi Police Station node `8845867389`. Each case retains its OSM/Overture source identifier, URL and license. Geometry/alias search regression checks on these cases do not establish independent entrance accuracy or population-level coverage. Reviewed shared-registry records retain contributor source links/declared licensing and operator review notes/times; pending records remain private to the review queue.

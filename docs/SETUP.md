@@ -22,7 +22,7 @@ The public beta uses one private Vercel Blob object to hold a provider lease. Ea
 3. Set `SINNOGRAM_GATE_URL` to its private URL; the host keeps `BLOB_READ_WRITE_TOKEN` secret.
 4. Set `SINNOGRAM_PUBLIC_BETA=1` and `AXIS_PROVIDER=osm`.
 
-If a slot is busy, the request returns a clear retry message. If coordination storage is unavailable, the public beta does not bypass the limiter. This is for light beta traffic; a larger release needs production-capacity map services. Public search is explicit, never autocomplete, and cached query results are reused within the running server.
+If a slot is busy, the request returns a clear retry message. If coordination storage is unavailable, the public beta does not bypass the limiter. This is for light beta traffic; a larger release needs production-capacity map services. External geocoding is explicit; autocomplete searches the local/shared place index. Cached geocoder results are reused within the running server.
 
 See [Nominatim's usage policy](https://operations.osmfoundation.org/policies/nominatim/) and [FOSSGIS usage and privacy](https://routing.openstreetmap.de/about.html). Provider endpoints can be replaced through `OSM_SEARCH_URL` and `OSRM_URL` without a code update.
 
@@ -87,7 +87,7 @@ go test -race ./...
 node --test tests/*.test.cjs
 ```
 
-Review source differences before publishing a refresh. The importer retains stable OSM IDs and source URLs, excludes explicitly private/disused features, and deduplicates adjacent road segments and near-identical same-name points. It does not guess missing coordinates or merge headquarters with branches. Retain the raw snapshot separately if needed for audit; do not commit personal fixes or itineraries. A reviewed data update and deployment changes the index; submitting a search does not train an AI model or establish a new verified address.
+Review source differences before publishing a refresh. The importer retains stable OSM IDs and source URLs, excludes private homes/non-public features and disused features, and deduplicates adjacent road segments and near-identical same-name points. Permission-access public-facing schools, clinics, shops, offices and named estates remain searchable with their access flags. Road access rules remain with the routing provider. The importer does not guess missing coordinates or merge headquarters with branches. Retain the raw snapshot separately if needed for audit; do not commit personal fixes or itineraries.
 
 Use a newer dated Geofabrik extract and Overture release for subsequent refreshes. The country download is checksum-verified and cached; PBF processing uses a temporary disk-backed node cache. Road representatives stay on their mapped FCT road segment. Towns and districts remain broad-area leads requiring an exact pin. The Overpass collector is also available without `--pbf`; `--endpoint` selects an alternative server when the default is unavailable. Visitor requests never trigger bulk downloads.
 
@@ -164,3 +164,48 @@ Browsing and adding a visit do not require an account. Enquiries, replies and pu
 Public profiles and portfolio images are visible to everyone; enquiries remain visible to participants and the existing directory administrators. The bridge sends neither the trip nor GPS updates to the directory. Adding a service visit carries only its public name, area and chosen duration in temporary, same-tab browser storage (30-minute expiry). Service areas are not exact addresses: the user must confirm a meeting entrance on loaded street-map tiles before a visit becomes a route stop. Existing origins, stops and progress are preserved until the usual add-stop/replan flow. Enquiries do not book appointments.
 
 The directory's existing authentication and per-user write limits still apply. The bridge does not remove those limits; shared upstream IP limits may constrain beta traffic. An unavailable directory shows a retry state without disabling the planner. Service photos accept only the existing public Vercel Blob host pattern, and uploaded photos require explicit publishing permission. No test accounts or enquiries should be created in production as release checks: use a local fixture for those write flows and verify deployed public reads separately.
+
+## Shared places, missing venues and corrections
+
+Missing place and Improve this place open a public-venue suggestion form. Name, address, neighbourhood, aliases, source links, access information, actual place pin and driving-entrance pin are stored separately. A contributor can use a chosen pin in their own trip immediately; shared suggestions stay pending until operator review. The live GPS tracker does not populate or submit these records automatically.
+
+`GET /api/place-registry` reports whether shared storage is configured. On Vercel, existing `BLOB_READ_WRITE_TOKEN` and `SINNOGRAM_GATE_URL` configure a **separate** private `sinnogram-place-registry-v1.json` object automatically. `SINNOGRAM_PLACE_REGISTRY_URL` can select another dedicated object. Creation is non-overwriting, updates use ETag compare-and-swap with bounded retries, and corrupt/unavailable storage is never replaced by an empty registry. The provider lease continues to contain only its opaque owner/time fields. Shared registry records are suitable for a beta/pilot of up to 10,000 reviewed entries; the storage interface can be replaced by a spatial database for larger ingestion workloads.
+
+For local/container development, set `SINNOGRAM_PLACE_FILE` to a persistent file location. File updates use an exclusive lock and atomic, synced replacement. File storage is rejected on Vercel because its function filesystem is not a durable shared database. Without a configured store, suggestions return an explicit unavailable response and are not falsely reported as saved.
+
+Set `SINNOGRAM_PLACE_REVIEW_TOKEN` to a random secret of at least 24 characters, then open `/place-review`. The token is sent as an Authorization header and held only in page memory. The queue and review/import endpoints require it. Decisions are:
+
+- **Approve address lead**: searchable text, no claimed location or entrance.
+- **Approve mapped place**: checked place coordinates, driving entrance still unverified.
+- **Approve checked driving entrance**: place and entrance pins are both recorded with the review note/time.
+- **Reject suggestion**: stays out of public search.
+
+Reviewed corrections replace their original source identifier, and stale proposals cannot overwrite newer reviews. Other server instances refresh the shared index within two seconds; updates require no redeploy. Search and bulk-stop lookup use this index before external geocoding. If shared storage temporarily fails, the last available/base index remains usable. The queue holds at most 500 pending submissions, and request/document sizes are bounded.
+
+When a user explicitly chooses a trip start, `POST /api/suggest` can use that transient point to rank nearby same-name branches. Coordinates stay in the request body, are not stored as contributions or sent to Nominatim, and the live marker is never used automatically as search context. Exact name/numeric constraints remain mandatory. Without a chosen start, existing query-only suggestions continue to work.
+
+Directions, optimization and road geometry use the chosen driving entrance. The itinerary, stop-duration keys and main venue marker retain the actual place location. Entrance repair therefore changes the access point without relocating the venue or resetting unrelated stops. The existing 500-metre road-connection check stays in place.
+
+Fine Trust Academy (Jikwoyi Phase 3 Extension) and Fine Trust Comprehensive College are included as **separate, unverified public address leads** in `data/public_place_leads.json`. Their names/locations were surfaced in public search listings; campus affiliation, precise location and entrance have not been independently confirmed. No coordinates are guessed from short plus codes or contradictory directory state labels. Search supports spaced/compound names such as Fine Trust/Finetrust while preserving numeric address constraints.
+
+## Public-source collection and a Jikwoyi pilot
+
+The standard-library collector extracts School/LocalBusiness JSON-LD and explicit page address blocks, preserves aliases/source URLs/collection time, and keeps different branches separate. It respects robots policies, uses bounded/rate-limited requests, and reports blocked or malformed sources. Same-site follow mode visits contact/branch/campus pages. CSV directories are also supported. Website coordinates are proposals, never automatically checked entrances. Person entries and out-of-FCT coordinates do not become mapped venues.
+
+```sh
+python3 scripts/collect_public_places.py --url https://YOUR-SCHOOL-SITE/contact --district Jikwoyi --follow-same-site --output /tmp/jikwoyi-source-leads.json
+python3 scripts/collect_public_places.py --csv /tmp/public-school-directory.csv --district Jikwoyi --output /tmp/jikwoyi-directory-leads.json
+python3 scripts/review_places.py --base-url https://sinnogram.vercel.app import /tmp/jikwoyi-source-leads.json
+python3 scripts/review_places.py --base-url https://sinnogram.vercel.app queue
+python3 scripts/review_places.py --base-url https://sinnogram.vercel.app review SUBMISSION_ID --decision approve_address --note "Published school address checked; campus pin still needs confirmation."
+```
+
+The CLI reads the reviewer token from the environment, never from a URL or committed file. Imports validate an entire batch of 1–200 drafts before saving and remain pending. Confirm campus identity and entrances using owner/field evidence in the review screen, then test the resulting search and driving route.
+
+`data/jikwoyi_discovery_cases.json` contains 50 real mapped-source discovery cases near the public Jikwoyi Police Station point. They are regression fixtures, **not independent evidence of 99% coverage or checked entrances**. Run against a local/preview server:
+
+```sh
+python3 scripts/benchmark_place_search.py --base-url http://localhost:8080
+```
+
+Extend the pilot with independently checked destinations, aliases, exact entrance coordinates and successful route results. Population-level `coverage_target.measured_rate` remains null until that independent find-and-route work is completed.
