@@ -2,6 +2,9 @@ name: Check Sinnogram
 on:
   push:
   pull_request:
+concurrency:
+  group: checks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -12,16 +15,4 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - run: go test -race ./...
-      - run: go vet ./...
-      - run: node --check web/app.js
-      - run: node --check web/scene.js
-      - run: node --check web/location.js
-      - run: node --check web/services.js
-      - run: node --check web/services-core.js
-
-      - run: node --check web/places.js
-      - run: node --check web/place-review.js
-      - run: node --test tests/*.test.cjs
-      - run: python3 -m unittest discover -s tests -p 'test_*.py'
-      - run: python3 scripts/check_fct_coverage.py
+      - run: bash scripts/check.sh

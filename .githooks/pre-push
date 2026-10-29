@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+repo_root=$(git rev-parse --show-toplevel)
+checked=''
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [[ "$local_sha" =~ ^0+$ ]] && continue
+  case " $checked " in *" $local_sha "*) continue ;; esac
+  printf 'Checking committed snapshot %s before pushing %s…\n' "${local_sha:0:7}" "$local_ref"
+  (
+    snapshot=$(mktemp -d "${TMPDIR:-/tmp}/sinnogram-push.XXXXXX")
+    trap 'check_status=$?; rm -rf "$snapshot"; if [[ $check_status -ne 0 ]]; then printf "%s\n" "Push stopped: fix the failing check, commit the fix, and push again." >&2; fi' EXIT
+    git archive "$local_sha" | tar -x -C "$snapshot"
+    bash "$repo_root/scripts/check.sh" "$snapshot" </dev/null
+    if git rev-parse --verify "$local_sha^" >/dev/null 2>&1; then
+      git diff --check "$local_sha^" "$local_sha"
+    fi
+  )
+  checked="$checked $local_sha"
+done

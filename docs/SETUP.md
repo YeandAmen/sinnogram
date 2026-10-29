@@ -209,3 +209,8 @@ python3 scripts/benchmark_place_search.py --base-url http://localhost:8080
 ```
 
 Extend the pilot with independently checked destinations, aliases, exact entrance coordinates and successful route results. Population-level `coverage_target.measured_rate` remains null until that independent find-and-route work is completed.
+
+
+## Checks before pushing
+
+Run `bash scripts/check.sh` for the same Go, JavaScript, Python and FCT integrity checks used by GitHub Actions. Every command stops on failure. Enable the repository's push guard once per clone with `git config core.hooksPath .githooks`. The guard tests a temporary archive of each pushed commit, so uncommitted fixes cannot hide a failing committed version. It does not change the working tree. CI remains enabled; newer runs cancel obsolete runs on the same branch.
