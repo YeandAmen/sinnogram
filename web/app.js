@@ -304,8 +304,8 @@ function detail(candidate,kind,index){
   $('detail-type').textContent=kind==='candidate'?({address:'ADDRESS LEAD · BUILDING PIN NOT VERIFIED',landmark:'VERIFIED LANDMARK ADDRESS',uncertain:'BUSINESS LISTING · VERIFY ITS LOCATION',street:'AREA / STREET · EXACT BUILDING NOT FOUND',place:'MAPPED PLACE',manual:'YOUR CONFIRMED PIN'}[candidate.match]||'LOCATION PREVIEW'):index<0?'STARTING POINT':`STOP ${number(index+1)}`;
   $('detail-title').textContent=title(candidate);$('detail-address').textContent=candidate.name;
   $('detail-description').textContent=candidate.description||(result?(result.provider==='demo'?'Demo · approximate locations and straight-line distances.':startAccuracy>150?`Approximate start · device accuracy about ${Math.round(startAccuracy)} m.`:''):'Add your places, then organize the trip to compare driving distances.');
-  const credit=$('route-credit');credit.replaceChildren();credit.hidden=kind==='candidate'||!result||result.provider==='demo';
-  if(!credit.hidden){const osm=el('a','© OpenStreetMap');osm.href='https://www.openstreetmap.org/copyright';osm.target='_blank';osm.rel='noopener noreferrer';const routing=el('a','OSRM');routing.href='https://routing.openstreetmap.de/about.html';routing.target='_blank';routing.rel='noopener noreferrer';if(result.provider==='google'){const google=el('a','Google Maps');google.href='https://maps.google.com';google.target='_blank';google.rel='noopener noreferrer';credit.append(google)}else credit.append(osm,document.createTextNode(' · '),routing)}
+  const credit=$('route-credit');credit.replaceChildren();credit.hidden=kind==='candidate'||result?.provider!=='google';
+  if(!credit.hidden){const google=el('a','Google Maps');google.href='https://maps.google.com';google.target='_blank';google.rel='noopener noreferrer';credit.append(google)}
   const actions=$('detail-actions');actions.replaceChildren();
   if(kind==='candidate'){
     const confirm=el('button',candidate.unlocated?'Choose this address’s map pin':needsPin(candidate)?'Place the exact building pin':'Check & confirm the map pin','dark-button');confirm.onclick=()=>openMap(candidate,'stop','detail');
