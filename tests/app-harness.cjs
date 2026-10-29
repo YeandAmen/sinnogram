@@ -15,12 +15,13 @@ async function app(reverse,search=async()=>({ok:true,json:async()=>({query:"",re
   let success, failure, options,captures=0,watchCount=0;const watches=new Map(),events={};
   const geolocation={getCurrentPosition(a,b,c){captures++;success=a;failure=b;options=c},watchPosition(a,b,c){const id=watchCount++;watches.set(id,{success:a,failure:b,options:c});return id},clearWatch:id=>watches.delete(id)};
  const context=vm.createContext({console,URL,Blob,AbortController,L:settings.L,setTimeout:settings.setTimeout||setTimeout,clearTimeout:settings.clearTimeout||clearTimeout,Date,window:{isSecureContext:true},localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
-   document:{visibilityState:'visible',addEventListener:(name,fn)=>{events[name]=fn},getElementById:$,createElement:()=>new Element(),createElementNS:()=>new Element(),createTextNode:s=>s,querySelectorAll:()=>[]},
+   document:{visibilityState:'visible',addEventListener:(name,fn)=>{events[name]=fn},getElementById:$,createElement:()=>new Element(),createElementNS:()=>new Element(),createTextNode:s=>s,querySelectorAll:()=>[],querySelector:()=>$('stop-entry-actions')},
    navigator:{geolocation,permissions:settings.permissions},
   sinnogramScene:{set(){},zoomBy(){},reset(){}},
-  fetch:async(path,init)=>{
+   fetch:async(path,init)=>{
+    if(path.startsWith('/api/place-')&&settings.community)return settings.community(path,init);
    if(path==='/api/route'&&settings.route)return settings.route(path,init);
-   if(path.startsWith('/api/suggest?')&&settings.suggest)return settings.suggest(path,init);
+    if((path.startsWith('/api/suggest?')||path==='/api/suggest')&&settings.suggest)return settings.suggest(path,init);
    if(path==='/api/analyze-stops'&&settings.analyze)return settings.analyze(path,init);
    if(path==='/api/optimize'&&settings.optimize)return settings.optimize(path,init);
    if(path==='/api/reverse')return reverse(path,init);
@@ -30,7 +31,8 @@ async function app(reverse,search=async()=>({ok:true,json:async()=>({query:"",re
   }
  });
  vm.runInContext(fs.readFileSync(require.resolve('../web/location.js'),'utf8'),context);
- vm.runInContext(fs.readFileSync(require.resolve('../web/app.js'),'utf8'),context);await tick();
+  vm.runInContext(fs.readFileSync(require.resolve('../web/app.js'),'utf8'),context);await tick();
+  if(settings.places)vm.runInContext(fs.readFileSync(require.resolve('../web/places.js'),'utf8'),context);
   return {$,context,storage,watches,watchCount:()=>watchCount,visibility:state=>{context.document.visibilityState=state;events.visibilitychange?.()},captures:()=>captures,currentCapture:()=>({success,failure,options}),run:(q)=>vm.runInContext('runPlaceSearch('+JSON.stringify(q)+')',context),start:()=>JSON.parse(vm.runInContext('JSON.stringify(startPlace)',context)),capture:()=>{$('locate').onclick();return {success,failure,options}}};
 }
 module.exports={app,tick};

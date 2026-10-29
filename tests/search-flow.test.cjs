@@ -8,7 +8,7 @@ test('search button immediately reveals progress, then results, without relying 
  a.$('search-form').onsubmit({preventDefault(){},submitter:null});
  assert.equal(a.$('search-submit').disabled,true);assert.match(a.$('search-status').textContent,/Looking for/);
  assert.ok(a.$('search-form').scrolls>0);resolve(result('Maitama'));await tick();
- assert.match(a.$('search-status').textContent,/1 result for “Maitama”/);assert.equal(a.$('matches').children.length,1);
+ assert.match(a.$('search-status').textContent,/1 result for “Maitama”/);assert.equal(a.$('matches').children.filter(node=>node.className==='search-result').length,1);
  assert.equal(a.$('search-submit').disabled,false);assert.ok(a.$('search-form').scrolls>=2);
 });
 test('Enter submits while Shift+Enter and composition retain multiline editing',async()=>{

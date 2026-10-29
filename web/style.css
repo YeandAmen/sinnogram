@@ -199,3 +199,21 @@
 .dark-button:active{transform:translateY(1px)}
 .result-waypoint{width:8px;height:8px;flex:none;border:1px solid #827c69;border-radius:50%;margin-right:8px}
 .search-result:hover .result-waypoint{background:#72785d;border-color:#72785d}
+/* Shared place suggestions and a focused operator review screen. */
+#place-form-dialog{width:min(92vw,620px);max-height:90dvh}
+#place-form-dialog h2{font-size:34px;margin:12px 0}
+#place-form-dialog input,#place-form-dialog select,#place-form-dialog textarea{font-size:16px}
+#place-form-dialog #place-submit{margin-top:22px}
+#place-form-status{font-size:12px;line-height:1.6;margin-top:14px;color:var(--ink)}
+.place-pin-choice{display:flex;align-items:baseline;flex-wrap:wrap;gap:8px 14px;padding:12px 0;border-bottom:1px solid var(--line);margin-top:12px}
+.place-pin-choice>span{font-size:12px;font-weight:500}.place-pin-choice small{font-size:11px;color:var(--muted)}
+.place-pin-choice .inline-link{min-height:40px;padding:8px 0}
+.place-verification{color:#58704b!important}.place-access{color:#87563b!important}
+html:has(.place-review-page){height:auto;overflow:auto}.place-review-page{height:auto;overflow:auto;min-height:100vh}
+.place-review-main{max-width:860px;margin:25px auto 80px;padding:0 24px}
+.place-review-main h1{font-size:42px;margin:15px 0 20px}.place-review-main>p{font-size:14px;max-width:650px}
+#review-login{max-width:460px;margin:24px 0}#review-login .dark-button{margin-top:15px}.review-toolbar{display:flex;gap:24px}
+.place-review-card{padding:28px 0;border-top:1px solid var(--line);margin-top:24px}.place-review-card h2{font-size:28px;margin:12px 0}
+.place-review-card input,.place-review-card textarea,.place-review-card select{font-size:16px}.place-review-card textarea{min-height:65px}
+.review-pin-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.place-review-card .dark-button{margin-top:20px}
+@media(max-width:500px){.review-pin-grid{grid-template-columns:1fr;gap:0}.place-review-main h1{font-size:34px}.stop-entry-actions{flex-wrap:wrap}}

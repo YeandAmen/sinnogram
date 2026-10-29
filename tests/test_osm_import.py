@@ -21,4 +21,9 @@ class OSMImportTest(unittest.TestCase):
   other=element(3,{'name':'Market Road','highway':'residential'});other.update(lat=9.1,lon=7.47)
   rows=normalize({'elements':[town,road,other]})['records']
   self.assertEqual(rows[0]['precision'],'area');self.assertEqual(len(rows),3)
+ def test_permission_access_public_venues_remain_searchable_with_access_metadata(self):
+  rows=normalize({'elements':[element(1,{'name':'Test Fine Trust School','amenity':'school','access':'private'}),element(2,{'name':'Private home','building':'house','access':'private'}),element(3,{'name':'Test Green Estate','landuse':'residential','access':'private'})]})['records']
+  self.assertEqual(len(rows),2);self.assertEqual(rows[0]['access'],'private');self.assertEqual(rows[1]['precision'],'area')
+ def test_closed_or_disused_public_venues_remain_excluded(self):
+  self.assertFalse(normalize({'elements':[element(1,{'name':'Old Test School','amenity':'school','access':'private','disused':'yes'})]})['records'])
 if __name__=='__main__':unittest.main()

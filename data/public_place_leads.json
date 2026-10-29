@@ -1,0 +1,30 @@
+{
+  "license": "Public name/address leads; source terms apply",
+  "attribution": "Search-indexed public listings; campus locations and entrances are unverified",
+  "scope": "Jikwoyi public school address leads",
+  "snapshot_at": "2026-10-29",
+  "records": [
+    {
+      "id": "lead/fine-trust-academy-jikwoyi-phase-3",
+      "name": "Fine Trust Academy",
+      "address": "Phase 3 Extension, Jikwoyi, Abuja, FCT",
+      "aliases": ["FineTrust", "FineTrust Academy", "Fine Trust Jikwoyi", "Fine Trust Academy Jikwoyi", "Fine Trust Academy Jikwoyo"],
+      "precision": "address",
+      "category": "school",
+      "source": "https://www.facebook.com/Fine-Trust-Academy-Jikwoyi-Phase-3-403550150417241/",
+      "source_note": "Public search-indexed school listing. The exact campus, address details and driving entrance have not been independently confirmed. Check this is the Fine Trust branch you mean.",
+      "updated_at": "2026-10-29"
+    },
+    {
+      "id": "lead/fine-trust-comprehensive-college-jikwoyi",
+      "name": "Fine Trust Comprehensive College",
+      "address": "Jikwoyi, Abuja, FCT",
+      "aliases": ["FineTrust", "FineTrust College", "Fine Trust College Jikwoyi", "Fine Trust Jikwoyi"],
+      "precision": "address",
+      "category": "school",
+      "source": "https://www.africabizinfo.com/NG/fine-trust-comprehensive-college",
+      "source_note": "Public search-indexed college listing. Its relationship to the academy, campus location and entrance are unverified. Confirm the branch before placing its pin.",
+      "updated_at": "2026-10-29"
+    }
+  ]
+}

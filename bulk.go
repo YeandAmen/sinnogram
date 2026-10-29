@@ -85,16 +85,16 @@ func splitBulk(text string, commaList bool) ([]string, int, error) {
 	return out, duplicates, nil
 }
 func analyzeBulk(text string, commaList bool) (bulkResponse, error) {
+	return analyzeBulkCatalog(text, commaList, catalog)
+}
+func analyzeBulkCatalog(text string, commaList bool, index locationCatalog) (bulkResponse, error) {
 	queries, duplicates, err := splitBulk(text, commaList)
 	if err != nil {
 		return bulkResponse{}, err
 	}
 	out := bulkResponse{Items: []bulkItem{}, Duplicates: duplicates, Message: "Review the places and branches below. Unresolved names stay in the list; streets and address-only matches need a confirmed pin."}
 	for _, q := range queries {
-		rows := officeSearch(q)
-		if len(rows) == 0 {
-			rows = catalog.Search(q)
-		}
+		rows := localPlaceSearch(index, q, false)
 		if rows == nil {
 			rows = []Candidate{}
 		}

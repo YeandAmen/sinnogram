@@ -360,12 +360,17 @@ func jsonOut(w http.ResponseWriter, status int, v any) {
 func fail(w http.ResponseWriter, status int, msg string) {
 	jsonOut(w, status, map[string]string{"error": msg})
 }
-func handler(p provider) http.Handler {
+func handler(p provider, supplied ...*placeRegistry) http.Handler {
 	mux := http.NewServeMux()
+	registry := newPlaceRegistry()
+	if len(supplied) > 0 {
+		registry = supplied[0]
+	}
+	registerPlaceRoutes(mux, registry)
 	mux.Handle("GET /api/tiles/", newTileRelay())
 	gate := make(chan struct{}, 2)
 	mux.HandleFunc("GET /api/config", func(w http.ResponseWriter, r *http.Request) {
-		jsonOut(w, 200, map[string]any{"provider": p.Name(), "max_stops": 10, "samples": samples, "coverage": map[string]any{"scope": fctScope, "bbox": fctCoverage.BBox}})
+		jsonOut(w, 200, map[string]any{"provider": p.Name(), "max_stops": 10, "samples": samples, "coverage": map[string]any{"scope": fctScope, "bbox": fctCoverage.BBox}, "place_registry": map[string]any{"enabled": registry != nil && registry.store != nil}})
 	})
 	mux.HandleFunc("GET /api/location-data", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("source") == "boundary" {
@@ -385,6 +390,10 @@ func handler(p provider) http.Handler {
 			path = "data/building_leads.json"
 			w.Header().Set("Content-Disposition", `attachment; filename="sinnogram-building-leads.json"`)
 		}
+		if r.URL.Query().Get("source") == "leads" {
+			path = "data/public_place_leads.json"
+			w.Header().Set("Content-Disposition", `attachment; filename="sinnogram-public-place-leads.json"`)
+		}
 		b, _ := catalogFiles.ReadFile(path)
 		w.Write(b)
 	})
@@ -395,6 +404,7 @@ func handler(p provider) http.Handler {
 			"overture_release": catalog.Overture.Release, "overture_snapshot_at": catalog.Overture.SnapshotAt, "overture_license": catalog.Overture.License,
 			"building_address_leads": len(catalog.Buildings.Records), "buildings_download": "/api/location-data?source=buildings",
 			"reviewed_address_leads": len(catalog.Reviewed.Records), "overture_download": "/api/location-data?source=overture", "seed_leads": catalog.Seeds,
+			"public_address_leads": len(catalog.Leads.Records), "public_leads_download": "/api/location-data?source=leads",
 			"snapshot_at": catalog.Snapshot.SnapshotAt, "scope": fctScope, "bbox": fctCoverage.BBox,
 			"osm_scope": catalog.Snapshot.Scope, "overture_scope": catalog.Overture.Scope,
 			"full_fct_collection": catalog.Snapshot.FullFCTCollection && catalog.Overture.FullFCTCollection,
@@ -493,7 +503,8 @@ func handler(p provider) http.Handler {
 			fail(w, 429, "please wait for the current request")
 			return
 		}
-		out, err := analyzeBulk(input.Text, input.CommaList)
+		index, _ := registry.index(r.Context())
+		out, err := analyzeBulkCatalog(input.Text, input.CommaList, index)
 		if err != nil {
 			fail(w, 400, err.Error())
 			return
@@ -506,14 +517,41 @@ func handler(p provider) http.Handler {
 			fail(w, 400, "enter between 2 and 300 characters")
 			return
 		}
-		rows := officeSearch(q)
-		if len(rows) == 0 {
-			rows = catalog.Suggest(q)
-		}
+		index, stale := registry.index(r.Context())
+		rows := localPlaceSearch(index, q, true)
 		if rows == nil {
 			rows = []Candidate{}
 		}
-		jsonOut(w, 200, SearchResponse{Results: rows, Query: q, Message: "Suggestions from Sinnogram’s location index. Check the branch and pin."})
+		message := "Suggestions from Sinnogram’s location index. Check the branch and pin."
+		if stale {
+			message += " Community updates are temporarily unavailable."
+		}
+		jsonOut(w, 200, SearchResponse{Results: rows, Query: q, Message: message})
+	})
+	mux.HandleFunc("POST /api/suggest", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Query  string      `json:"query"`
+			Near   *placePoint `json:"near"`
+			Prefix bool        `json:"prefix"`
+		}
+		if !decodePlaceRequest(w, r, &body, 2048) {
+			return
+		}
+		q := strings.TrimSpace(body.Query)
+		if len(q) < 2 || len(q) > 300 {
+			fail(w, 400, "Enter between 2 and 300 characters.")
+			return
+		}
+		index, stale := registry.index(r.Context())
+		rows := localPlaceSearch(index, q, body.Prefix, body.Near)
+		if rows == nil {
+			rows = []Candidate{}
+		}
+		message := "Local place matches, with nearby branches ranked using your chosen starting point. Check the branch and entrance."
+		if stale {
+			message += " Community updates are temporarily unavailable."
+		}
+		jsonOut(w, 200, SearchResponse{Results: rows, Query: q, Message: message})
 	})
 	mux.HandleFunc("POST /api/route", func(w http.ResponseWriter, r *http.Request) {
 		if strings.Split(r.Header.Get("Content-Type"), ";")[0] != "application/json" {
@@ -586,13 +624,22 @@ func handler(p provider) http.Handler {
 			if r.URL.Query().Get("live") == "1" {
 				result, e = o.searchLiveDetailed(ctx, q)
 			} else {
-				result, e = o.SearchDetailed(ctx, q)
+				index, stale := registry.index(ctx)
+				result, e = o.searchCatalogDetailed(ctx, q, index)
+				if stale {
+					result.Message += " Community updates are temporarily unavailable."
+				}
 			}
 			if e != nil {
 				fail(w, 502, e.Error())
 				return
 			}
 			jsonOut(w, 200, result)
+			return
+		}
+		index, _ := registry.index(ctx)
+		if rows := localPlaceSearch(index, q, false); len(rows) > 0 {
+			jsonOut(w, 200, SearchResponse{Results: rows, Query: q, Message: "Matches from Sinnogram’s place registry and FCT index."})
 			return
 		}
 		places, e := p.Search(ctx, q)
@@ -621,6 +668,21 @@ func handler(p provider) http.Handler {
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 		defer cancel()
+		index, _ := registry.index(ctx)
+		if rows := localPlaceSearch(index, q, false); len(rows) > 0 {
+			places := []Place{}
+			for _, row := range rows {
+				if !row.Unlocated {
+					point := row.Place
+					if row.Entrance != nil {
+						point.Lat, point.Lng = row.Entrance.Lat, row.Entrance.Lng
+					}
+					places = append(places, point)
+				}
+			}
+			jsonOut(w, 200, places)
+			return
+		}
 		v, e := p.Search(ctx, q)
 		if e != nil {
 			fail(w, 502, e.Error())
@@ -678,13 +740,16 @@ func handler(p provider) http.Handler {
 		jsonOut(w, 200, buildResult(t, m, p.Name()))
 	})
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, "/vendor/") && r.URL.Path != "/scene.js" && r.URL.Path != "/" && r.URL.Path != "/app.js" && r.URL.Path != "/location.js" && r.URL.Path != "/style.css" && r.URL.Path != "/manifest.webmanifest" && r.URL.Path != "/icon.svg" && r.URL.Path != "/icon-192.png" && r.URL.Path != "/icon-512.png" && r.URL.Path != "/apple-touch-icon.png" {
+		if !strings.HasPrefix(r.URL.Path, "/vendor/") && r.URL.Path != "/scene.js" && r.URL.Path != "/" && r.URL.Path != "/app.js" && r.URL.Path != "/location.js" && r.URL.Path != "/places.js" && r.URL.Path != "/place-review.js" && r.URL.Path != "/place-review" && r.URL.Path != "/style.css" && r.URL.Path != "/manifest.webmanifest" && r.URL.Path != "/icon.svg" && r.URL.Path != "/icon-192.png" && r.URL.Path != "/icon-512.png" && r.URL.Path != "/apple-touch-icon.png" {
 			http.NotFound(w, r)
 			return
 		}
 		path := r.URL.Path
 		if path == "/" {
 			path = "/index.html"
+		}
+		if path == "/place-review" {
+			path = "/place-review.html"
 		}
 		b, e := assets.ReadFile("web" + path)
 		if e != nil {
