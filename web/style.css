@@ -205,3 +205,6 @@
 @media(max-width:380px){.header{padding-left:12px;padding-right:12px;gap:8px}.header nav{gap:6px}.header .nav-item{font-size:9px;letter-spacing:.3px}.header .live-nav{min-width:30px}.header .brand-name{font-size:14px}}
 
 .service-visit{margin:20px 0;padding:14px 0;border-bottom:1px solid var(--line)}.service-visit p{font-size:14px}.service-visit>div{display:flex;justify-content:space-between;gap:16px}.service-visit .inline-link{font-size:12px}
+
+/* Links and buttons share one navigation baseline, including iOS Safari. */
+.header nav{align-items:center}.header nav .nav-item,.header nav a.nav-item{display:inline-flex;align-items:center;justify-content:center;line-height:1.4;min-height:40px;white-space:nowrap;flex-shrink:0;vertical-align:middle}

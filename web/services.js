@@ -24,7 +24,13 @@
   const query=$('service-query').value,area=$('service-area').value;
   const list=profiles.filter(p=>C.matches(p,query,category,area));$('service-results').replaceChildren();
   $('service-status').textContent=list.length?'':profiles.length?'No services match that search. Try another area or category.':'The directory is just getting started. You can list your service below.';
-  for(const p of list){const card=button('',()=>showProfile(p),'provider-card');card.setAttribute('aria-label',`View ${p.name}`);card.append(visual(p),make('span',p.category,'provider-category'),make('h2',p.name),make('p',`${p.title} · ${p.area}`,'provider-meta'),make('p',rate(p),'provider-rate'));$('service-results').append(card)}
+  for(const name of category?[category]:C.categories){
+   const members=list.filter(p=>p.category===name),column=make('section',undefined,'service-column');
+   const heading=make('h2',name);column.append(heading);
+   if(!members.length)column.append(make('p',query||area?'No matches here.':'No providers listed yet.','service-column-empty'));
+   for(const p of members){const card=button('',()=>showProfile(p),'provider-row');card.setAttribute('aria-label',`View ${p.name}`);card.append(make('h3',p.name),make('p',`${p.title} · ${p.area}`,'provider-meta'),make('p',rate(p),'provider-rate'));column.append(card)}
+   $('service-results').append(column);
+  }
  }
  async function load(){
   $('service-retry').hidden=true;$('service-status').textContent='Finding people around you…';
