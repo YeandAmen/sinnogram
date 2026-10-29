@@ -44,7 +44,7 @@ test('GPS route progress stays ephemeral and returning to the origin is a final 
  const saved=JSON.parse(x.storage.get('axis-trip-v1'));assert.equal(saved.start,null);assert.equal(saved.result,null);
  const restored=await app(async()=>({ok:false}),undefined,{storage:x.storage});assert.equal(run(restored,'result'),null);assert.equal(state(restored).tripStarted,false);
 });
-test('route details keep compact linked attribution without the long provider paragraph',async()=>{
- const x=await organized();assert.equal(x.$('detail-description').textContent,'');assert.equal(x.$('route-credit').hidden,false);
- assert.equal(x.$('route-credit').children[0].href,'https://www.openstreetmap.org/copyright');assert.equal(x.$('route-credit').children[2].href,'https://routing.openstreetmap.de/about.html');
+test('OSM route details omit duplicate provider links while Google credits remain scoped to Google routes',async()=>{
+ const x=await organized();assert.equal(x.$('detail-description').textContent,'');assert.equal(x.$('route-credit').hidden,true);assert.equal(x.$('route-credit').children.length,0);
+ run(x,"result.provider='google';showTrip()");assert.equal(x.$('route-credit').hidden,false);assert.equal(x.$('route-credit').children[0].href,'https://maps.google.com');
 });
