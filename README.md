@@ -1,7 +1,7 @@
 <p align="center"><img src="docs/banner.svg" alt="Sinnogram — your day, in a better order" width="100%"></p>
 <p align="center"><a href="https://sinnogram.vercel.app"><strong>Try Sinnogram ↗</strong></a> &nbsp; · &nbsp; <a href="docs/SETUP.md">Under the hood</a></p>
 
-> I just walk around this country and solve my problem, the problems are just fucking too much and yeah im lazy,
+> I just walk around this country and solve my problem, the problems are just too much and yeah im lazy,
 
 So I built this one.
 
